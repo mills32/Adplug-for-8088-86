@@ -14,16 +14,16 @@ The program will restore the original font from "Font_VGA.png" when you go back 
 ![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png)
 
 Conbtrols: 
-- Move = UP DOWN LEFT RIGHT arrows.
+- Move = UP DOWN LEFT RIGHT arrows
 - Select file = ENTER
 - Stop music = SPACEBAR
 - Exit = ESC
 
 Requirements:
 - CPU 8088 4.77 Mhz
-- RAM 512 Kb.
+- RAM 512 Kb
 - GRAPHICS CGA
-- SOUND Adlib or compatible (Sound Blaster, opl2lpt).
+- SOUND Adlib or compatible (Sound Blaster, opl2lpt)
 
 Some formats will play slow on 8088 4.77 Mhz, code needs to be optimized.
 
@@ -54,16 +54,16 @@ o VGA desde la imagen "Font_BIZ.png". Al salir a msdos, restaurará los gráfico
 ![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png)
 
 Conbtroles: 
-- Mover = Teclas direccionales.
+- Mover = Teclas direccionales
 - Seleccionar = ENTER
 - Detener Música = ESPACIO
 - Salir = ESC
 
 Requisitos:
 - CPU 8088 4.77 Mhz
-- RAM 512 Kb.
+- RAM 512 Kb
 - GRAFICOS CGA
-- SONIDO Adlib o compatible (Sound Blaster, opl2lpt).
+- SONIDO Adlib o compatible (Sound Blaster, opl2lpt)
 
 Algunos formnatos funcionan lentos en 8088 4.77 Mhz, el código necesita ser optimizado.
 
