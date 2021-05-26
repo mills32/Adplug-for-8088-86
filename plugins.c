@@ -1083,7 +1083,10 @@ byte CldsPlayer_load(char *filename){
 	fclose(f);
 	
 	Music_Add_Interrupt(70);
-	Print_Loaded("LOUDNESS Sound System",filename,"    ");
+	
+	if (!strncmp(filename,"MUSICMAN.LDS",12)){
+		Print_Loaded("LOUDNESS Sound System","The Music Man (Loudness Logo)","Andras Molnar");
+	}else Print_Loaded("LOUDNESS Sound System",filename,"    ");
 	return true;
 }
 
@@ -1203,7 +1206,7 @@ void Load_Music(char *filename){
 	else {
 		gotoxy(59,25);
 		textattr(RED << 4 | WHITE);
-		cprintf("NOT SUPPORTED");
+		cprintf(" NOT SUPPORTED  ");
 	}
 }
 
