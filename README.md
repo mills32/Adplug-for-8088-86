@@ -51,6 +51,8 @@ En realidas no es un port de Adplug, sino que he utilizado el código de los rep
 Si selecciones EGA o VGA en el inicio, el programa cargará gráficos para sustiruir los caracteres del modo texto de EGA 
 o VGA desde la imagen "Font_BIZ.png". Al salir a msdos, restaurará los gráficos originales de la imagen "Font_VGA.png".
 
+![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png)
+
 Conbtroles: 
 - Mover = Teclas direccionales.
 - Seleccionar = ENTER
