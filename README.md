@@ -11,7 +11,7 @@ This is not really adplug, I only took the file readers and players, and then cr
 If you choose EGA or VGA, the program will load custom graphics for the text mode characters from "Font_BIZ.png".
 The program will restore the original font from "Font_VGA.png" when you go back to dos. 
 
-![alt tag](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/adplay88_003.png)
+https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png
 
 Conbtrols: 
 - Move = UP DOWN LEFT RIGHT arrows.
