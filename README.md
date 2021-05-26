@@ -26,6 +26,7 @@ Requirements:
 - SOUND Adlib or compatible (Sound Blaster, opl2lpt)
 
 Some formats will play slow on 8088 4.77 Mhz, code needs to be optimized.
+For the moment it is highly recommended an 8088 at 9 Mhz or an 8086 at 8Mhz. 
 
 Supported formats:
 - IMF: Id's Music Format - working 100%.
@@ -66,6 +67,7 @@ Requisitos:
 - SONIDO Adlib o compatible (Sound Blaster, opl2lpt)
 
 Algunos formnatos funcionan lentos en 8088 4.77 Mhz, el código necesita ser optimizado.
+De momento es mejor utilizar un 8088 a 9 Mhz, o un 8086 a 8 Mhz.
 
 Formatos soportados:
 - IMF: Id's Music Format - funcionando 100%.
