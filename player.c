@@ -44,13 +44,17 @@ typedef unsigned long  dword;
 
 byte *XGA=(byte *)0xA0000000L;			/* this points to graphics memory. */
 byte *XGA_TEXT_MAP=(byte *)0xB8000000L;	/* this points to text MAP - MAP attributes */
+word *PARALEL1=(word *)0x00400008L;		//Paralel port address
+word *PARALEL2=(word *)0x0040000AL;
+word *PARALEL3=(word *)0x0040000CL;
 extern unsigned char *ADPLUG_music_data;
 byte running = 1;
 byte GRAPHICS_CARD = 2;
 //ADLIB/SBlaster = 388
 //SB16+ = 220 or 240
-//opl2lpt = 378
+//opl2lpt = 378, 379 y 37A
 int ADLIB_PORT = 0;//0x0388;
+byte OPL2LPT = 0;
 
 //Visualizer bars colors
 byte VBar_Colors[] = {
@@ -180,7 +184,9 @@ void Setup(){
 	printf("                      1 for ADLIB / Sound Blaster (port 388)\n");
 	printf("                      2 for Sound Blaster 16 or newer (port 220)\n");
 	printf("                      3 for Sound Blaster 16 or newer (port 240)\n");
-	printf("                      4 for opl2lpt (port 378)\n\n\n");
+	printf("                      4 for opl2 lpt1 \n");
+	printf("                      5 for opl2 lpt2 \n");
+	printf("                      6 for opl2 lpt3 \n\n\n");
 	printf("               Press to select, or any other key for default  (388)");
 	while(!kbhit());
 	key = getch() -48;
@@ -189,7 +195,9 @@ void Setup(){
 	if (key == 1) ADLIB_PORT = 0x0388;
 	else if (key == 2) ADLIB_PORT = 0x0220;
 	else if (key == 3) ADLIB_PORT = 0x0240;
-	else if (key == 4) ADLIB_PORT = 0x0378;
+	else if (key == 4) {OPL2LPT = 1; ADLIB_PORT = PARALEL1[0];}
+	else if (key == 5) {OPL2LPT = 1; ADLIB_PORT = PARALEL2[0];}
+	else if (key == 6) {OPL2LPT = 1; ADLIB_PORT = PARALEL3[0];}
 	else ADLIB_PORT = 0x0388;
 }
 
@@ -558,7 +566,8 @@ void vga_write_reg(word iport, byte reg, byte val){
 	outportb(iport, reg);
 	outportb(iport+1, val);
 }
-
+#define word_out(port,register,value) \
+  outport(port,(((word)value<<8) + register))
 //1 bit png, data starts at 0x43
 void Set_Tiles(unsigned char *font){
 	int x,y,tileline,offset = 0,offset1 = 0;
@@ -580,7 +589,12 @@ void Set_Tiles(unsigned char *font){
 			}
 		}
 	}
-
+	//asm mov ax, 1112h
+	//asm xor bl, bl
+	//asm int 10h //Cells are 8 pixel tall
+	vga_write_reg(0x3C4, 0x01, 0x01);	//9/8DM -- 9/8 Dot Mode, text cells are 8 pixels wide
+	
+	//Write tiles
 	vga_write_reg(0x3C4, 0x04, 0x06);
 	vga_write_reg(0x3Ce, 0x04, 0x02);
 	asm{

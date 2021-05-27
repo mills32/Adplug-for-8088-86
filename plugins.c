@@ -370,7 +370,9 @@ void Print_ERROR(){
 }
 
 //OPL2
-void opl2_write(unsigned char reg, unsigned char data){
+void (*opl2_write)(unsigned char, unsigned char);
+
+void opl2_write0(unsigned char reg, unsigned char data){
 	asm mov ah,0
 	asm mov dx, ADLIB_PORT
 	asm mov al, reg
@@ -379,6 +381,30 @@ void opl2_write(unsigned char reg, unsigned char data){
 	asm mov al, data
 	asm out dx, al
 }
+
+void opl2lpt_write(unsigned char reg, unsigned char data) {
+    int lpt_data = ADLIB_PORT;
+    int lpt_ctrl = ADLIB_PORT + 2;
+	int i;
+    /* Select OPL2 register */
+    outp(lpt_data, reg);
+    outp(lpt_ctrl, 13);
+    outp(lpt_ctrl, 9);
+    outp(lpt_ctrl, 13);
+
+    /* Wait at least 3.3 microseconds */
+    for (i = 0; i < 6; i++) inp(lpt_ctrl);
+
+    /* Set value */
+    outp(lpt_data, data);
+    outp(lpt_ctrl, 12);
+    outp(lpt_ctrl, 8);
+    outp(lpt_ctrl, 12);
+
+    /* Wait at least 23 microseconds */
+    for (i = 0; i < 35; i++) inp(lpt_ctrl);
+}
+
 
 void opl2_clear(void){
 	int i;
@@ -1211,6 +1237,7 @@ void Load_Music(char *filename){
 }
 
 //INIT RAM AND etc
+extern byte OPL2LPT;
 void Init(){
 	int i;
 	asm CLI
@@ -1230,6 +1257,9 @@ void Init(){
 	}
 	if ((lds_positions = calloc(1024,sizeof(LDS_Position))) == NULL) {printf("Not enough RAM"); exit(1);}
 	if ((lds_channel = calloc(9,sizeof(LDS_Channel))) == NULL) {printf("Not enough RAM"); exit(1);}
+	
+	if (OPL2LPT) opl2_write = &opl2lpt_write;
+	else opl2_write = &opl2_write0;
 }
 
 void Exit_Dos(){
@@ -1244,7 +1274,13 @@ void Exit_Dos(){
 	free(lds_channel);
 	system("cls");
 	chdir(Initial_working_dir);
+	
 	Set_Tiles("Font_VGA.png");
+	
+	//Reset text mode
+	asm mov ax, 3h
+	asm int 10h
+	
 	exit(1);
 }
 
