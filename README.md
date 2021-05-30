@@ -39,7 +39,7 @@ Supported formats:
   Edlib Tracker format 0 - Minor bugs. 
   Edlib Tracker format 1 - not well supported. 
 
-I want to add: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), Sierra games (SCI), and Lucasarts (LAA).
+I want to add: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker by Electronic Rats (HSC), Sierra games (SCI), and Lucasarts (LAA).
 Also I want to add a custom RAD format I created (RAP), in which channels 0 and 1 are used to send commands to Sound Blaster to play PCM Drums.
 
 ESP:
@@ -81,6 +81,6 @@ Formatos soportados:
   Edlib Tracker format 0 - pequeños bugs. 
   Edlib Tracker format 1 - no funcionan bien. 
 
-Además quiero añadir: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), Sierra (SCI), Lucasarts (LAA).
+Además quiero añadir: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker (HSC), Sierra (SCI), Lucasarts (LAA).
 También quiero añadir un formato especial creado por mi (RAP), en el cual, los datos de los canales 0 y 1 son utilizados para enviar 
 instrucciones a una Sound Blaster, para que reproduzca sonidos PCM para percusión.
