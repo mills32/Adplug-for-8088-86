@@ -382,32 +382,48 @@ void opl2_write0(unsigned char reg, unsigned char data){
 	asm out dx, al
 }
 
-void opl2lpt_write(unsigned char reg, unsigned char data) {
-    int lpt_data = ADLIB_PORT;
-    int lpt_ctrl = ADLIB_PORT + 2;
-	int i;
-    /* Select OPL2 register */
-    outp(lpt_data, reg);
-    outp(lpt_ctrl, 13);
-    outp(lpt_ctrl, 9);
-    outp(lpt_ctrl, 13);
 
-    /* Wait at least 3.3 microseconds */
-    for (i = 0; i < 6; i++) inp(lpt_ctrl);
+void opl2lpt_write(unsigned char reg, unsigned char data) {  
+	// Select OPL2 register
+	asm mov dx, ADLIB_PORT	
+	asm mov al, reg
+	asm out dx, al	//outp(ADLIB_PORT, reg);
+	
+	asm add dx, 2	//ADLIB_PORT+2 (lpt_ctrl)
+    asm mov al, 13
+	asm out dx, al	//outp(lpt_ctrl, 13);
+	asm mov al, 9
+	asm out dx, al	//outp(lpt_ctrl, 9);
+	asm mov al, 13
+    asm out dx, al	//outp(lpt_ctrl, 13);
 
-    /* Set value */
-    outp(lpt_data, data);
-    outp(lpt_ctrl, 12);
-    outp(lpt_ctrl, 8);
-    outp(lpt_ctrl, 12);
+    //Wait at least 3.3 microseconds
+	asm mov cx,6
+	wait:
+		asm in ax,dx
+		asm loop wait	//for (i = 0; i < 6; i++) inp(lpt_ctrl);
 
-    /* Wait at least 23 microseconds */
-    for (i = 0; i < 35; i++) inp(lpt_ctrl);
+    // Set value
+	asm sub dx, 2	//ADLIB_PORT	
+	asm mov al, data
+	asm out dx, al	//outp(ADLIB_PORT, data);
+    
+	asm add dx, 2	//ADLIB_PORT+2
+    asm mov al, 12
+	asm out dx, al	//outp(lpt_ctrl, 12);
+	asm mov al, 8
+	asm out dx, al	//outp(lpt_ctrl, 8);
+	asm mov al, 12
+    asm out dx, al	//outp(lpt_ctrl, 12);
+
+    // Wait at least 23 microseconds
+    //for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
 
 
 void opl2_clear(void){
 	int i;
+	for (i = 0; i < 6; i++) inp(0x0388);
     for (i=1; i< 256; opl2_write(i++, 0));    //clear all registers
 }
 
@@ -460,14 +476,17 @@ byte file_extension(char *file, char *ext){
 
 void Reset_CmodPlayer(){
 	int i;
-	int timer = 0;
-	
-	while (timer < 200) timer++;
-	
+	//int timer = 0;
 	Music_Remove_Interrupt();
 	
+	opl2_clear();
 	songend = del = ord = rw = regbd = 0;
 	tempo = bpm; speed = initspeed;
+	//memset(tracks,0,64*9*5);
+	//for (i = 0; i < 64*9; i++)
+	//	memset(tracks[i],0,64*5);
+	//
+	//memset(ADPLUG_music_data,0,65535);
 	memset(channel,0,sizeof(mod_channel)*nchans);
 	memset(order,0,128);
 	memset(arplist,0,256); 
@@ -478,10 +497,6 @@ void Reset_CmodPlayer(){
 	memset(songname,0,24);
 	memset(author,0,24);
 	memset(instname,0,26*23);
-	//memset(tracks,0,64*9*sizeof(mod_tracks));
-	//for (i = 0; i < 64*9; i++) memset(tracks,0,64*sizeof(mod_tracks));
-	//memset(ADPLUG_music_data,0,65535);
-	opl2_clear();
 }
 
 void d00_rewind(int subsong);
@@ -497,7 +512,7 @@ byte CimfPlayer_load(char *filename){
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
 	size = 0;
 	pos = 0;
-	Reset_CmodPlayer();
+	Stop_Music();
 	selected_player = 0;
 	//memset(ADPLUG_music_data,0,63*1024);
 	musicdata = (m_data*) ADPLUG_music_data;
@@ -548,10 +563,10 @@ byte CradPlayer_load(char *filename){
 	unsigned short patofs[32];
 	const unsigned char convfx[16] = {255,1,2,3,255,5,255,255,255,255,20,255,17,0xd,255,19};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Reset_CmodPlayer();
+	Stop_Music();
 	selected_player = 3;
 	Print_Loading();
-	
+	memset(ADPLUG_music_data,0,65535);
 	for (i = 0; i < 256; i++) {arplist[i]=0, arpcmd[i]=0;}
 	initspeed = 3;
     activechan = 0xffffffff; flags = 256;/* curchip(opl->getchip()*/
@@ -680,7 +695,7 @@ byte Csa2Player_load(char *filename){
 		HAS_UNKNOWN127 = (1 << 0)
 	};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Reset_CmodPlayer();
+	Stop_Music();
 	selected_player = 3;
 	Print_Loading();
 	
@@ -877,7 +892,7 @@ byte CamdPlayer_load(char *filename){
 		0x37, 0x3a, 0x3c, 0x3f
 	};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Reset_CmodPlayer();
+	Stop_Music();
 	Print_Loading();
 	selected_player = 3;
 	initspeed = 6;
@@ -1042,9 +1057,9 @@ byte CldsPlayer_load(char *filename){
 	// file validation section (actually just an extension check)
 	//if(!file_extension(filename, "LDS")) return false;
 	f = fopen(filename,"rb"); if(!f) return false;
-	lds_patterns = (unsigned short*) ADPLUG_music_data;
+	lds_patterns = (unsigned short*) (ADPLUG_music_data + (1024*sizeof(LDS_Position)) + (9*sizeof(LDS_Channel)));
 	Print_Loading();
-	Music_Remove_Interrupt();
+	Stop_Music();
 	selected_player = 4;
 	
 	// init all with 0
@@ -1124,7 +1139,7 @@ byte Cd00Player_load(char *filename){
 	char	*str;
 	FILE	*f = fopen(filename,"rb"); if(!f) return false;
 	Print_Loading();
-	Music_Remove_Interrupt();
+	Stop_Music();
 	//memset(ADPLUG_music_data,0,63*1024);
 	selected_player = 5;
 	
@@ -1247,19 +1262,23 @@ void Init(){
 	//Get currect directory
 	getcwd(Initial_working_dir,32);
 	//Allocate modules data 185KB
-	if ((tracks = calloc(64*9,sizeof(mod_tracks))) == NULL) {printf("Not enough RAM"); exit(1);}
+	if ((tracks = calloc(64*9,5)) == NULL) {printf("Not enough RAM"); exit(1);}
 	for (i = 0; i < 64*9; i++) {
-		if ((tracks[i] = calloc(64,sizeof(mod_tracks))) == NULL) {printf("Not enough RAM"); exit(1);}
+		if ((tracks[i] = calloc(64,5)) == NULL) {printf("Not enough RAM"); exit(1);}
 	}
+	//ADPLUG_music_data = (unsigned char*) &tracks[0];
 	if ((ADPLUG_music_data = farcalloc(65535,1)) == NULL) {
 		printf("Not enough RAM");
 		exit(1);
 	}
-	if ((lds_positions = calloc(1024,sizeof(LDS_Position))) == NULL) {printf("Not enough RAM"); exit(1);}
-	if ((lds_channel = calloc(9,sizeof(LDS_Channel))) == NULL) {printf("Not enough RAM"); exit(1);}
 	
-	if (OPL2LPT) opl2_write = &opl2lpt_write;
-	else opl2_write = &opl2_write0;
+	//if ((lds_positions = calloc(1024,sizeof(LDS_Position))) == NULL) {printf("Not enough RAM"); exit(1);}
+	//if ((lds_channel = calloc(9,sizeof(LDS_Channel))) == NULL) {printf("Not enough RAM"); exit(1);}
+	lds_positions = (LDS_Position*) ADPLUG_music_data;
+	lds_channel = (LDS_Channel*) (ADPLUG_music_data + (1024*sizeof(LDS_Position)));
+	
+	if (OPL2LPT == 1) opl2_write = &opl2lpt_write;
+	if (OPL2LPT == 0) opl2_write = &opl2_write0;
 }
 
 void Exit_Dos(){
@@ -1270,8 +1289,8 @@ void Exit_Dos(){
 	free(ADPLUG_music_data);
 	for (i = 0; i < 64; i++) free(tracks[i]);
 	free(tracks);
-	free(lds_positions);
-	free(lds_channel);
+	//free(lds_positions);
+	//free(lds_channel);
 	system("cls");
 	chdir(Initial_working_dir);
 	
@@ -2478,6 +2497,8 @@ void d00_vibrato(unsigned char chan){
 	d00_setfreq(chan);
 }
 
+//61.194
+//61.050
 void interrupt Cd00Player_update(void) {
 	unsigned char	c,cnt,trackend=0,fx,note;
 	unsigned short	ord,*patt,buf,fxop;
@@ -2492,23 +2513,25 @@ void interrupt Cd00Player_update(void) {
 		d00_vibrato(c);	// d00_vibrato
 
 		if(channel->spfx != 0xffff) {	// SpFX
+			struct Sspfx *spfx_chan = &spfx[channel->spfx];
 			if(channel->fxdel)
 				channel->fxdel--;
 			else {
-				channel->spfx = spfx[channel->spfx].ptr;
-				channel->fxdel = spfx[channel->spfx].duration;
-				channel->inst = spfx[channel->spfx].instnr & 0xfff;
-				if(spfx[channel->spfx].modlev != 0xff)
-					channel->modvol = spfx[channel->spfx].modlev;
+				channel->spfx = spfx_chan->ptr;
+				channel->fxdel = spfx_chan->duration;
+				channel->inst = spfx_chan->instnr & 0xfff;
+				spfx_chan = &spfx[channel->spfx];
+				if(spfx_chan->modlev != 0xff)
+					channel->modvol = spfx_chan->modlev;
 				d00_setinst(c);
-				if(spfx[channel->spfx].instnr & 0x8000)	// locked frequency
-					note = spfx[channel->spfx].halfnote;
+				if(spfx_chan->instnr & 0x8000)	// locked frequency
+					note = spfx_chan->halfnote;
 				else												// unlocked frequency
-					note = spfx[channel->spfx].halfnote + channel->note;
+					note = spfx_chan->halfnote + channel->note;
 				channel->freq = d00_notetable[note] + (noteDIV12[note] << 10);
 				d00_setfreq(c);
 			}
-			channel->modvol += spfx[channel->spfx].modlevadd; channel->modvol &= 63;
+			channel->modvol += spfx_chan->modlevadd; channel->modvol &= 63;
 			d00_setvolume(c);
 		}
 
@@ -2623,15 +2646,18 @@ readseq:	// process sequence (pattern)
 							channel->note = note;	// remember note for SpFX
 	
 							if(channel->ispfx != 0xffff && cnt < 0x20) {	// reset SpFX
+								struct Sspfx *spfx_chan;
 								channel->spfx = channel->ispfx;
-								if(spfx[channel->spfx].instnr & 0x8000)	// locked frequency
-									note = spfx[channel->spfx].halfnote;
+								spfx_chan = &spfx[channel->spfx];
+								
+								if(spfx_chan->instnr & 0x8000)	// locked frequency
+									note = spfx_chan->halfnote;
 								else												// unlocked frequency
-									note += spfx[channel->spfx].halfnote;
-								channel->inst = spfx[channel->spfx].instnr & 0xfff;
-								channel->fxdel = spfx[channel->spfx].duration;
-								if(spfx[channel->spfx].modlev != 0xff)
-									channel->modvol = spfx[channel->spfx].modlev;
+									note += spfx_chan->halfnote;
+								channel->inst = spfx_chan->instnr & 0xfff;
+								channel->fxdel = spfx_chan->duration;
+								if(spfx_chan->modlev != 0xff)
+									channel->modvol = spfx_chan->modlev;
 								else
 									channel->modvol = inst->data[7] & 63;
 							}

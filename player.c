@@ -185,19 +185,17 @@ void Setup(){
 	printf("                      2 for Sound Blaster 16 or newer (port 220)\n");
 	printf("                      3 for Sound Blaster 16 or newer (port 240)\n");
 	printf("                      4 for opl2 lpt1 \n");
-	printf("                      5 for opl2 lpt2 \n");
-	printf("                      6 for opl2 lpt3 \n\n\n");
+	printf("                      5 for opl2 lpt2 \n\n\n");
 	printf("               Press to select, or any other key for default  (388)");
 	while(!kbhit());
 	key = getch() -48;
 	system("cls");	
 	Clearkb();
-	if (key == 1) ADLIB_PORT = 0x0388;
-	else if (key == 2) ADLIB_PORT = 0x0220;
-	else if (key == 3) ADLIB_PORT = 0x0240;
+	if (key == 1) {OPL2LPT = 0;ADLIB_PORT = 0x0388;}
+	else if (key == 2) {OPL2LPT = 0;ADLIB_PORT = 0x0220;}
+	else if (key == 3) {OPL2LPT = 0;ADLIB_PORT = 0x0240;}
 	else if (key == 4) {OPL2LPT = 1; ADLIB_PORT = PARALEL1[0];}
 	else if (key == 5) {OPL2LPT = 1; ADLIB_PORT = PARALEL2[0];}
-	else if (key == 6) {OPL2LPT = 1; ADLIB_PORT = PARALEL3[0];}
 	else ADLIB_PORT = 0x0388;
 }
 
@@ -393,7 +391,8 @@ void Set_Map(){
 				case '4': color = MAGENTA << 4 | WHITE;break;
 				case '5': color = GREEN << 4 | LIGHTGREEN;break;
 				case '6': color = GREEN << 4 | WHITE;break;
-				case '.':
+				case '7': color = BLACK << 4 | RED;break;
+				case '.': color = BLACK << 4 | LIGHTBLUE;break;
 				case '=': color = BLACK << 4 | WHITE;break;
 				case '#': color = BLUE << 4 | BLACK;break;
 			}
@@ -478,10 +477,10 @@ byte GUI_MAP_COL[] = {"\
 .=4444444444444444444444444444444444444444444444444444444444444444444444444444=.\
 .==============================================================================.\
 ................................................................................\
-...........=============........................................................\
-.......=====33333333333=====...............=========================............\
-.......=2222222222222222222=...............===3333333333333333333===............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
+...........=============...............................................777777...\
+.......=====33333333333=====...............=========================...777777...\
+.......=2222222222222222222=...............===3333333333333333333===...777777...\
+.......=2222222222222222222=...............=00000000000000000000000=...======...\
 .......=2222222222222222222=...............=00000000000000000000000=............\
 .......=2222222222222222222=...............=00000000000000000000000=............\
 .......=2222222222222222222=...............=00000000000000000000000=............\
@@ -592,7 +591,7 @@ void Set_Tiles(unsigned char *font){
 	//asm mov ax, 1112h
 	//asm xor bl, bl
 	//asm int 10h //Cells are 8 pixel tall
-	vga_write_reg(0x3C4, 0x01, 0x01);	//9/8DM -- 9/8 Dot Mode, text cells are 8 pixels wide
+	//vga_write_reg(0x3C4, 0x01, 0x01);	//9/8DM -- 9/8 Dot Mode, text cells are 8 pixels wide
 	
 	//Write tiles
 	vga_write_reg(0x3C4, 0x04, 0x06);
@@ -615,7 +614,6 @@ void Set_Tiles(unsigned char *font){
 	vga_write_reg(0x3CE, 0x04, 0x00);
 	free(data);free(data1);
 }
-
 
 
 //END
