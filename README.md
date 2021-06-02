@@ -44,12 +44,12 @@ Also I want to add a custom RAD format I created (RAP), in which channels 0 and 
 
 ESP:
 
-Adplug Reproductor de música OPL2 para 8088-86 and 286
+Adplug Reproductor de música OPL2 para 8088-86 y 286
 --------------------------------------------
 
 Pues mas de lo mismo, quise compilar adplug para que funcionase en 8086.
 
-En realidas no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
+En realidad no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
 Si selecciones EGA o VGA en el inicio, el programa cargará gráficos para sustiruir los caracteres del modo texto de EGA 
 o VGA desde la imagen "Font_BIZ.png". Al salir a msdos, restaurará los gráficos originales de la imagen "Font_VGA.png".
 
