@@ -36,7 +36,9 @@ Supported formats:
 - AMD: Amusic Tracker - minor bugs.
 - LDS: Loudness Sound System Tracker, the best tracker for adlib - working 100% (minor bugs caused by my code).
 - D00: Edlib Tracker, The most complex tracker created for Adlib.
+  
   Edlib Tracker format 0 - Minor bugs. 
+  
   Edlib Tracker format 1 - not well supported. 
 
 I want to add: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker by Electronic Rats (HSC), Sierra games (SCI), and Lucasarts (LAA).
@@ -78,7 +80,9 @@ Formatos soportados:
 - AMD: Amusic Tracker - pequeños bugs.
 - LDS: Loudness Sound System Tracker, el mejor tracker para Adlib - funcionando 100% (Pequeños bugs causados por mi código).
 - D00: Edlib Tracker, el tracker más complejo creado para Adlib.
+
   Edlib Tracker format 0 - pequeños bugs. 
+  
   Edlib Tracker format 1 - no funcionan bien. 
 
 Además quiero añadir: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker (HSC), Sierra (SCI), Lucasarts (LAA).
