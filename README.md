@@ -17,7 +17,7 @@ Conbtrols:
 - Move = UP DOWN LEFT RIGHT arrows
 - Select file = ENTER
 - Stop music = SPACEBAR
-- Enable/Disable visualizer = F1 (not implemented yet)
+- Enable/Disable visualizer = F1
 - Exit = ESC
 
 Requirements:
@@ -59,7 +59,7 @@ Conbtroles:
 - Mover = Teclas direccionales
 - Seleccionar = ENTER
 - Detener Música = ESPACIO
-- Desactivar/Activar visualizador = F1 (Aun no implementado)
+- Desactivar/Activar visualizador = F1
 - Salir = ESC
 
 Requisitos:
