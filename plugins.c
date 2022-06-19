@@ -6,6 +6,25 @@
 #include <conio.h>
 #undef outp
 
+#define SB_RESET 0x6
+#define SB_READ_DATA 0xA
+#define SB_READ_DATA_STATUS 0xE
+#define SB_WRITE_DATA 0xC
+#define SB_ENABLE_SPEAKER 0xD1
+#define SB_DISABLE_SPEAKER 0xD3
+#define SB_SET_PLAYBACK_FREQUENCY 0x40
+#define SB_SINGLE_CYCLE_8PCM 0x14
+#define SB_SINGLE_CYCLE_4ADPCM 0x74
+#define SB_SINGLE_CYCLE_3ADPCM 0x76
+#define SB_SINGLE_CYCLE_2ADPCM 0x16
+
+#define MASK_REGISTER 0x0A
+#define MODE_REGISTER 0x0B
+#define MSB_LSB_FLIP_FLOP 0x0C
+#define DMA_CHANNEL_0 0x87
+#define DMA_CHANNEL_1 0x83
+#define DMA_CHANNEL_3 0x82
+
 /* macro to write a word to a port */
 #define word_out(port,register,value) \
   outport(port,(((word)value<<8) + register))
@@ -24,12 +43,16 @@ void interrupt (*old_time_handler)(void);
 void interrupt CimfPlayer_update(void);
 void interrupt CmodPlayer_update(void);
 void interrupt CldsPlayer_update(void);
-void interrupt Cd00Player_update(void);
-
+void /*interrupt*/ Cd00Player_update();
+void Exit_Dos();
 void Set_Tiles(unsigned char *font);
 	
 extern int ADLIB_PORT;
 char Initial_working_dir[32];
+	
+extern byte Color_Loading;
+extern byte Color_Loaded;
+extern byte Color_Error;	
 	
 	//////////
 	//TABLES//
@@ -57,6 +80,8 @@ const unsigned short d00_notetable[] =	// D00 note table
 	 340,363,385,408,432,458,485,514,544,577,611,647,
 	 };
   
+int d00_MUL64_DIV63[64][64];// (0 - 64) *(0 - 64) / 63
+
 // SA2 compatible adlib note table
 const unsigned short CmodPlayer_sa2_notetable[12] =
   {340,363,385,408,432,458,485,514,544,577,611,647};
@@ -113,6 +138,8 @@ enum Flags {
 };
 
 //LOUDNESS
+int MOD_POS = 0;
+unsigned char *MOD_DATA;
 
 typedef struct {
 	unsigned char	mod_misc, mod_vol, mod_ad, mod_sr, mod_wave,
@@ -214,6 +241,7 @@ unsigned char author_name[32];
 unsigned char remarks[32];
 
 //RAD AMD SA2
+byte MOD_PCM = 0;
 byte songend;
 word rate;
 unsigned char order[128];
@@ -242,6 +270,7 @@ byte noteDIV12[256]; //Store note/12
 byte noteMOD12[96];
 
 //Loudness
+FILE *modfile;
 // Note frequency table (16 notes / octave)
 unsigned short lds_frequency[] = {
   343, 344, 345, 347, 348, 349, 350, 352, 353, 354, 356, 357, 358,
@@ -294,11 +323,11 @@ unsigned char fmchip[0xff], jumping, fadeonoff, allvolume, hardfade,
 unsigned short	posplay, jumppos, *lds_patterns, lds_speed;
 byte playing, songlooped;
 unsigned int numpatch, numposi, patterns_size, mainvolume;
+int *lds_DIV1216;
+
 
 //EDLIB TRACKER (D00)
 unsigned char instrument_test[11];
-#define HIBYTE(val)	(val >> 8)
-#define LOBYTE(val)	(val & 0xff)
 unsigned char songend,version;
 unsigned char *datainfo;
 unsigned short *seqptr;
@@ -307,6 +336,119 @@ d00header1 *header1;
 d00channel d00_channel[9];
 unsigned char *filedata;
 
+
+//HERAD
+#define HERAD_NUM_VOICES	9
+#define HERAD_NUM_NOTES		12
+#define HERAD_INST_SIZE		40
+#define HERAD_MAX_TRACKS	21
+#define HERAD_MAX_SIZE		65535
+
+static const byte slot_offset[HERAD_NUM_VOICES];
+static const word FNum[HERAD_NUM_NOTES];
+static const byte fine_bend[HERAD_NUM_NOTES + 1];
+static const byte coarse_bend[10];
+
+byte songend;
+int wTime;
+dword ticks_pos;	/* current tick counter */
+dword total_ticks;	/* total ticks in song */
+
+byte comp;			/* File compression type (see HERAD_COMP_*) */
+byte AGD;			/* Whether this is HERAD AGD (OPL3) */
+byte v2;			/* Whether this is HERAD version 2 */
+byte nTracks;		/* Number of tracks */
+byte nInsts;		/* Number of instruments */
+
+word wLoopStart;	/* Loop starts at this measure (0 = don't loop) */
+word wLoopEnd;		/* Loop ends at this measure (0 = don't loop) */
+word wLoopCount;	/* Number of times the selected measures will play (0 = loop forever; >0 - play N times) */
+word wSpeed;		/* Fixed point value that controls music speed. Value range is 0x0100 - 0x8100 */
+
+typedef struct{
+	// stored variables
+	word size;			// data size 
+	byte *data;			// event data 
+
+	// variables for playback
+	word pos;			// data position 
+	dword counter;			// tick counter 
+	word ticks;			// ticks to wait for next event 
+} herad_trk ;
+
+typedef struct{
+	byte program;			// current instrument 
+	byte playprog;			// current playing instrument (used for keymap) 
+	byte note;			// current note 
+	byte keyon;				// note is active 
+	byte bend;			// current pitch bend 
+	byte slide_dur;		// pitch slide duration 
+} herad_chn ;
+
+typedef struct {
+	char mode;			// instrument mode (see HERAD_INSTMODE_*) 
+	byte voice;			// voice number, unused 
+	byte mod_ksl;			// modulator: KSL 
+	byte mod_mul;			// modulator: frequency multiplier 
+	byte feedback;			// feedback 
+	byte mod_A;			// modulator: attack 
+	byte mod_S;			// modulator: sustain 
+	byte mod_eg;			// modulator: envelope gain 
+	byte mod_D;			// modulator: decay 
+	byte mod_R;			// modulator: release 
+	byte mod_out;			// modulator: output level 
+	byte mod_am;			// modulator: amplitude modulation (tremolo) 
+	byte mod_vib;			// modulator: frequency vibrato 
+	byte mod_ksr;			// modulator: key scaling/envelope rate 
+	byte con;			// connector 
+	byte car_ksl;			// carrier: KSL 
+	byte car_mul;			// carrier: frequency multiplier 
+	byte pan;			// panning 
+	byte car_A;			// carrier: attack 
+	byte car_S;			// carrier: sustain 
+	byte car_eg;			// carrier: envelope gain 
+	byte car_D;			// carrier: decay 
+	byte car_R;			// carrier: release 
+	byte car_out;			// carrier: output level 
+	byte car_am;			// carrier: amplitude modulation (tremolo) 
+	byte car_vib;			// carrier: frequency vibrato 
+	byte car_ksr;			// carrier: key scaling/envelope rate 
+	char mc_fb_at;			// macro: modify feedback with aftertouch 
+	byte mod_wave;			// modulator: waveform select 
+	byte car_wave;			// carrier: waveform select 
+	char mc_mod_out_vel;		// macro: modify modulator output level with note velocity 
+	char mc_car_out_vel;		// macro: modify carrier output level with note velocity 
+	char mc_fb_vel;			// macro: modify feedback with note velocity 
+	byte mc_slide_coarse;	// macro: pitch slide coarse tune 
+	byte mc_transpose;		// macro: root note transpose 
+	byte mc_slide_dur;		// macro: pitch slide duration (in ticks) 
+	char mc_slide_range;		// macro: pitch slide range 
+	byte dummy;			// unknown value 
+	char mc_mod_out_at;		// macro: modify modulator output level with aftertouch 
+	char mc_car_out_at;		// macro: modify carrier output level with aftertouch 
+} herad_inst_data;
+
+typedef struct {
+	char mode;			// same as herad_inst_data 
+	byte voice;			// same as herad_inst_data 
+	byte offset;			// keymap start note: 0 => C2 (24), 24 => C4 (48) 
+	byte dummy;			// unknown value 
+	byte index[HERAD_INST_SIZE-4];	// array of instruments 
+} herad_keymap ;
+
+typedef struct{
+	byte data[HERAD_INST_SIZE];	// array of 8-bit parameters 
+	herad_inst_data param;			// structure of parameters 
+	herad_keymap keymap;			// keymap structure 
+} herad_inst ;
+
+herad_trk track[21];				// event tracks [nTracks] 
+herad_chn chn[21];					// active channels [nTracks] 
+herad_inst her_inst[32];			// instruments [nInsts] 
+
+dword loop_pos;
+word loop_times;
+herad_trk loop_data[HERAD_MAX_TRACKS];
 
 	////////////
 	//FUNCTIOS//
@@ -318,33 +460,35 @@ char Key_Hit[9] = {0,0,0,0,0,0,0,0,0};
 void Get_Volume(){
 	int i;
 	for (i = 0; i < 9; i++) {
-		
-		if (selected_player == 3) {
-			if (Key_Hit[i]) C_Volume[i] = channel[i].vol1;
-			else if (C_Volume[i] > 4) C_Volume[i] -=4;
-			Key_Hit[i] = 0;
-		}
-		if (selected_player == 4){
-			if (Key_Hit[i]) C_Volume[i] = lds_channel[i].volcar;
-			else if (C_Volume[i] > 4) C_Volume[i] -=4;
-			Key_Hit[i] = 0; 
-		}
-		if ((selected_player == 5) || (selected_player == 0)){
-			if (Key_Hit[i]) C_Volume[i] = 56;
-			else if (C_Volume[i] > 4) C_Volume[i] -=4;
-			Key_Hit[i] = 0; 
+		switch (selected_player){
+			case 3:
+				if (Key_Hit[i]) C_Volume[i] = channel[i].vol1;
+				else if (C_Volume[i] > 4) C_Volume[i] -=4;
+				Key_Hit[i] = 0;
+			break;
+			case 4:
+				if (Key_Hit[i]) C_Volume[i] = lds_channel[i].volcar;
+				else if (C_Volume[i] > 4) C_Volume[i] -=4;
+				Key_Hit[i] = 0; 
+			break;
+			case 0:
+			case 5:
+				if (Key_Hit[i]) C_Volume[i] = 56;
+				else if (C_Volume[i] > 4) C_Volume[i] -=4;
+				Key_Hit[i] = 0; 
+			break;
 		}
 	}
 }
 
 void Print_Loading(){
 	gotoxy(60,25); 
-	textattr(BLINK | RED << 4 | WHITE);
+	textattr(Color_Loading);
 	cprintf("LOADING...");
 }
 
 void Print_Loaded(char *format, char *name, char *author){
-	textattr(BLUE << 4 | WHITE); //*
+	textattr(Color_Loaded); //*
 	gotoxy(47,19);
 		cprintf("%s",empty_str);
 	gotoxy(45,20); 
@@ -359,17 +503,18 @@ void Print_Loaded(char *format, char *name, char *author){
 	gotoxy(47,21); 
 		cprintf("%s",author);
 	gotoxy(60,25); 
-	textattr(RED << 4 | WHITE);
+	textattr(Color_Error);
 	cprintf("LOADED            ");
 }
 
 void Print_ERROR(){
 	gotoxy(60,25); 
-	textattr(RED << 4 | WHITE); //*
+	textattr(Color_Error); //*
 	cprintf("ERROR             ");
 }
 
 //OPL2
+
 void (*opl2_write)(unsigned char, unsigned char);
 
 void opl2_write0(unsigned char reg, unsigned char data){
@@ -377,11 +522,20 @@ void opl2_write0(unsigned char reg, unsigned char data){
 	asm mov dx, ADLIB_PORT
 	asm mov al, reg
 	asm out dx, al
+	
+	//Wait at least 3.3 microseconds
+	asm mov cx,6
+	wait:
+		asm in ax,dx
+		asm loop wait	//for (i = 0; i < 6; i++) inp(lpt_ctrl);
+	
 	asm inc dx
 	asm mov al, data
 	asm out dx, al
+	
+	// Wait at least 23 microseconds
+    //for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
-
 
 void opl2lpt_write(unsigned char reg, unsigned char data) {  
 	// Select OPL2 register
@@ -420,14 +574,220 @@ void opl2lpt_write(unsigned char reg, unsigned char data) {
     //for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
 
+void Adlib_Detect(){ 
+    int status1, status2, i;
+
+    opl2_write(4, 0x60);
+    opl2_write(4, 0x80);
+
+    status1 = inp(ADLIB_PORT);
+    
+    opl2_write(2, 0xFF);
+    opl2_write(4, 0x21);
+
+    for (i=100; i>0; i--) inp(ADLIB_PORT);
+
+    status2 = inp(ADLIB_PORT);
+    
+    opl2_write(4, 0x60);
+    opl2_write(4, 0x80);
+
+    if ( ( ( status1 & 0xe0 ) == 0x00 ) && ( ( status2 & 0xe0 ) == 0xc0 ) ){
+        unsigned char i;
+		for (i=1; i<=0xF5; opl2_write(i++, 0));    //clear all registers
+		opl2_write(1, 0x20);  // Set WSE=1
+		printf("\nOPL2 compatible card detected.\n");
+		sleep(2);
+        return;
+    } else {
+		printf("\nError: OPL2 compatible card not detected\n");
+		sleep(2);
+		exit(1);
+        return;
+    }
+}
 
 void opl2_clear(void){
-	int i;
+	int i, slot1, slot2;
+    static unsigned char slotVoice[9][2] = {{0,3},{1,4},{2,5},{6,9},{7,10},{8,11},{12,15},{13,16},{14,17}};
+    static unsigned char offsetSlot[18] = {0,1,2,3,4,5,8,9,10,11,12,13,16,17,18,19,20,21};
+    
+    opl2_write(   1, 0x20);   // Set WSE=1
+    opl2_write(   8,    0);   // Set CSM=0 & SEL=0
+    opl2_write(0xBD,    0);   // Set AM Depth, VIB depth & Rhythm = 0
+    
+    for(i=0; i<9; i++)
+    {
+        slot1 = offsetSlot[slotVoice[i][0]];
+        slot2 = offsetSlot[slotVoice[i][1]];
+        
+        opl2_write(0xB0+i, 0);    //turn note off
+        opl2_write(0xA0+i, 0);    //clear frequency
+
+        opl2_write(0xE0+slot1, 0);
+        opl2_write(0xE0+slot2, 0);
+
+        opl2_write(0x60+slot1, 0xff);
+        opl2_write(0x60+slot2, 0xff);
+        opl2_write(0x80+slot1, 0xff);
+        opl2_write(0x80+slot2, 0xff);
+
+        opl2_write(0x40+slot1, 0xff);
+        opl2_write(0x40+slot2, 0xff);
+    }
 	for (i = 0; i < 6; i++) inp(0x0388);
     for (i=1; i< 256; opl2_write(i++, 0));    //clear all registers
 }
 
+//SOUND BLASTER PCM
+short sb_base = 220;
+char sb_irq = 7;
+char sb_dma = 1;
+//void interrupt ( *old_irq )();
+
+unsigned char *dma_buffer;
+int page;
+int sb_offset;
+
+typedef struct{
+	int offset;
+	int size;
+} audio_sample;
+
+audio_sample sample[16];
+int LT_sb_nsamples = 0;
+int LT_sb_offset = 0;
+
+void interrupt sb_irq_handler(){
+	inportb(sb_base + SB_READ_DATA_STATUS);
+	outportb( 0x20, 0x20 );
+}
+
+int reset_dsp(short port){
+	outportb( port + SB_RESET, 1 );
+	delay(10);
+	outportb( port + SB_RESET, 0 );
+	delay(10);
+	if( ((inportb(port + SB_READ_DATA_STATUS) & 0x80) == 0x80) && (inportb(port + SB_READ_DATA) == 0x0AA )) {
+		sb_base = port;
+		return 1;
+	}
+	return 0;
+}
+
+void write_dsp( unsigned char command ){
+	while( (inportb( sb_base + SB_WRITE_DATA ) & 0x80) == 0x80 );
+	outportb( sb_base + SB_WRITE_DATA, command );
+}
+
+void sb_init(){
+	char temp;
+	long linear_address;
+	// possible values: 210, 220, 230, 240, 250, 260, 280
+	for( temp = 1; temp < 9; temp++ ) {
+		if( temp != 7 ) if( reset_dsp(0x200 + (temp << 4))) break;
+	}
+	if(temp == 9) return;
+	
+	//old_irq = getvect( sb_irq + 8 );
+	//setvect( sb_irq + 8, sb_irq_handler );
+	//outportb( 0x21, inportb( 0x21 ) & !(1 << sb_irq) );
+	
+	linear_address = FP_SEG(dma_buffer);
+	linear_address = (linear_address << 4)+FP_OFF(dma_buffer);
+	
+	page = linear_address >> 16;
+	sb_offset = linear_address & 0xFFFF;
+	
+	write_dsp( SB_ENABLE_SPEAKER );
+}
+
+void sb_deinit(){
+	write_dsp( SB_DISABLE_SPEAKER );
+	//setvect( sb_irq + 8, old_irq );
+	//outportb( 0x21, inportb( 0x21 ) & (1 << sb_irq) );
+	free(dma_buffer);
+}
+
+void Clear_Samples(){
+	LT_sb_nsamples = 0;
+	LT_sb_offset = 0;
+	memset(dma_buffer,0x00,16*1024);
+}
+
+void sb_load_sample(char *file_name){
+	FILE *raw_file;
+	if (LT_sb_offset > 31*1024) ;
+	sample[LT_sb_nsamples].offset = LT_sb_offset;
+	raw_file = fopen(file_name, "rb");
+	fseek(raw_file, 0x2C, SEEK_SET);
+	sample[LT_sb_nsamples].size = fread(dma_buffer+LT_sb_offset, 1, 16*1024, raw_file);
+	LT_sb_offset += sample[LT_sb_nsamples].size;
+	LT_sb_nsamples++;
+	fclose(raw_file);
+}
+
+void sb_play_sample(char sample_number, int freq){
+	int pos = sample[sample_number].offset;
+	int length = sample[sample_number].size -1;
+
+	//Playback
+	outportb( MASK_REGISTER, 4 | 1 /*sb_dma*/ );
+	outportb( MSB_LSB_FLIP_FLOP, 0 );
+	outportb( MODE_REGISTER, 0x48 | 1 /*sb_dma*/ );
+	outportb( DMA_CHANNEL_1, page); 
+	
+	// program the DMA controller
+	outportb( sb_dma << 1, (sb_offset+pos) & 0xFF );
+	outportb( sb_dma << 1, (sb_offset+pos) >> 8 );
+	outportb((sb_dma << 1) + 1, length & 0xFF );
+	outportb((sb_dma << 1) + 1, length >> 8 );
+	
+	write_dsp(SB_SET_PLAYBACK_FREQUENCY);
+	write_dsp(256-1000000/freq);
+	
+	outportb(MASK_REGISTER, sb_dma);
+	write_dsp(SB_SINGLE_CYCLE_8PCM);
+	write_dsp(length & 0xFF);
+	write_dsp(length >> 8);
+}
+
+void sb_setup(){
+	unsigned char *temp_buf;
+	long linear_address;
+	short page1, page2;
+	
+	//Allocate the first 32 KB of temp data inside a 64KB block for DMA
+	temp_buf = farcalloc(16*1024,sizeof(byte));
+	linear_address = FP_SEG(temp_buf);
+	linear_address = (linear_address << 4)+FP_OFF(temp_buf);
+	page1 = linear_address >> 16;
+	page2 = (linear_address + 16*1024) >> 16;
+	if( page1 != page2 ) {
+		dma_buffer = farcalloc(16*1024,sizeof(byte));
+		free( temp_buf );
+	} else dma_buffer = temp_buf;
+	sb_init();
+}
+
+void (*MOD_PCM_Drums)(byte);
+
+void MOD_PCM_Drums_OFF(byte chan){};
+
+void MOD_PCM_Drums_ON(byte chan){
+	sb_play_sample(chan,11025);
+};
+
+
+
 //INTERRUPS
+
+//Edlib player is too big to be in an interrupt
+//Load it here
+void (*Non_Interrupt_Player)();
+void Void_function(){};
+
+
 void Music_Add_Interrupt(int rate){
 	//set interrupt and start playing music
 	//unsigned long spd = 1193182/rate;
@@ -443,7 +803,7 @@ void Music_Add_Interrupt(int rate){
 		//case 2: setvect(0x1C, ); break;
 		case 3: setvect(0x1C, CmodPlayer_update); break; //RAD, SA2, AMD, (A2M)
 		case 4: setvect(0x1C, CldsPlayer_update); break; //LOUDNESS
-		case 5: setvect(0x1C, Cd00Player_update); break; //EDlib
+		case 5: Non_Interrupt_Player = &Cd00Player_update;/*setvect(0x1C, Cd00Player_update);*/ break; //EDlib
 	}
 	outportb(0x43, 0x36);
 	outportb(0x40, spd & 0xff00);	//lo-byte
@@ -466,7 +826,6 @@ void Music_Remove_Interrupt(){
 	//music_offset = 0;
 }
 
-
 //LOAD FILES
 
 byte file_extension(char *file, char *ext){
@@ -480,12 +839,12 @@ void Reset_CmodPlayer(){
 	Music_Remove_Interrupt();
 	
 	opl2_clear();
+	
+	for (i = 1; i < 9; i++) C_Volume[i] = 0;
+	
 	songend = del = ord = rw = regbd = 0;
 	tempo = bpm; speed = initspeed;
-	//memset(tracks,0,64*9*5);
-	//for (i = 0; i < 64*9; i++)
-	//	memset(tracks[i],0,64*5);
-	//
+	for (i = 0; i < 64*9; i++) memset(tracks[i],0,64*5);
 	//memset(ADPLUG_music_data,0,65535);
 	memset(channel,0,sizeof(mod_channel)*nchans);
 	memset(order,0,128);
@@ -497,12 +856,42 @@ void Reset_CmodPlayer(){
 	memset(songname,0,24);
 	memset(author,0,24);
 	memset(instname,0,26*23);
+	
+	Non_Interrupt_Player = &Void_function;
 }
 
 void d00_rewind(int subsong);
 
 void Stop_Music(){
 	Reset_CmodPlayer();
+}
+
+void WaitVsync_MDA(){
+	asm mov		dx,003bah
+	WaitNotVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jnz		WaitNotVsync
+	WaitVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jz		WaitVsync
+	
+	Non_Interrupt_Player();
+}
+
+void WaitVsync_NOMDA(){
+	asm mov		dx,003dah
+	WaitNotVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jnz		WaitNotVsync
+	WaitVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jz		WaitVsync
+	
+	Non_Interrupt_Player();
 }
 
 byte CimfPlayer_load(char *filename){
@@ -512,7 +901,6 @@ byte CimfPlayer_load(char *filename){
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
 	size = 0;
 	pos = 0;
-	Stop_Music();
 	selected_player = 0;
 	//memset(ADPLUG_music_data,0,63*1024);
 	musicdata = (m_data*) ADPLUG_music_data;
@@ -563,10 +951,9 @@ byte CradPlayer_load(char *filename){
 	unsigned short patofs[32];
 	const unsigned char convfx[16] = {255,1,2,3,255,5,255,255,255,255,20,255,17,0xd,255,19};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Stop_Music();
 	selected_player = 3;
 	Print_Loading();
-	memset(ADPLUG_music_data,0,65535);
+
 	for (i = 0; i < 256; i++) {arplist[i]=0, arpcmd[i]=0;}
 	initspeed = 3;
     activechan = 0xffffffff; flags = 256;/* curchip(opl->getchip()*/
@@ -669,8 +1056,27 @@ byte CradPlayer_load(char *filename){
 	Music_Add_Interrupt(rate);
 	desc[29] = 0;
 	desc[56] = 0;
-	if (d) Print_Loaded("Reality Adlib Tracker",desc,&desc[30]);
-	else Print_Loaded("Reality Adlib Tracker","                             ","                           ");
+	opl2_clear();
+	for(i=0;i<9;i++) {
+		channel[i].vol2 = 63; channel[i].vol1 = 63;
+		channel[i].key = 0;
+		opl2_write(0xb0 + i, 0);	// stop old note
+	}
+	if (!MOD_PCM){
+		if (d) Print_Loaded("Reality Adlib Tracker",desc,&desc[30]);
+		else Print_Loaded("Reality Adlib Tracker","                             ","                           ");
+		
+	} else {//Load samples if RAS Reality Adlib + Samples
+		desc[80+16] = 0;
+		desc[160+16] = 0;
+		desc[240+16] = 0;
+		if (d) Print_Loaded("Reality Adlib Tracker PCM",desc,&desc[30]);
+		else Print_Loaded("Reality Adlib Tracker PCM","                             ","                           ");
+		Clear_Samples();
+		sb_load_sample(&desc[80]);	//Sample channel 0
+		sb_load_sample(&desc[160]);	//Sample channel 1
+	}
+	
 	return true;
 }
 
@@ -695,7 +1101,6 @@ byte Csa2Player_load(char *filename){
 		HAS_UNKNOWN127 = (1 << 0)
 	};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Stop_Music();
 	selected_player = 3;
 	Print_Loading();
 	
@@ -892,7 +1297,6 @@ byte CamdPlayer_load(char *filename){
 		0x37, 0x3a, 0x3c, 0x3f
 	};
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
-	Stop_Music();
 	Print_Loading();
 	selected_player = 3;
 	initspeed = 6;
@@ -1051,7 +1455,7 @@ byte CamdPlayer_load(char *filename){
 }
 
 byte CldsPlayer_load(char *filename){
-	unsigned int	i, j;
+	word	i, j;
 	LDS_SoundBank	*sb;
 	FILE *f;
 	// file validation section (actually just an extension check)
@@ -1059,9 +1463,8 @@ byte CldsPlayer_load(char *filename){
 	f = fopen(filename,"rb"); if(!f) return false;
 	lds_patterns = (unsigned short*) (ADPLUG_music_data + (1024*sizeof(LDS_Position)) + (9*sizeof(LDS_Channel)));
 	Print_Loading();
-	Stop_Music();
 	selected_player = 4;
-	
+	opl2_clear();
 	// init all with 0
 	tempo_now = 3; playing = true; songlooped = false;
 	jumping = fadeonoff = allvolume = hardfade = pattplay = posplay = numposi = jumppos = mainvolume = 0;
@@ -1122,12 +1525,13 @@ byte CldsPlayer_load(char *filename){
 	//patterns = new unsigned short[(fp.filesize(f) - f->pos()) / 2 + 1];
 	for(i = 0; !feof(f); i++) fread(&lds_patterns[i],1,2,f);
 	fclose(f);
-	
+
 	Music_Add_Interrupt(70);
 	
 	if (!strncmp(filename,"MUSICMAN.LDS",12)){
 		Print_Loaded("LOUDNESS Sound System","The Music Man (Loudness Logo)","Andras Molnar");
 	}else Print_Loaded("LOUDNESS Sound System",filename,"    ");
+	
 	return true;
 }
 
@@ -1139,10 +1543,9 @@ byte Cd00Player_load(char *filename){
 	char	*str;
 	FILE	*f = fopen(filename,"rb"); if(!f) return false;
 	Print_Loading();
-	Stop_Music();
 	//memset(ADPLUG_music_data,0,63*1024);
 	selected_player = 5;
-	
+	opl2_clear();
 	// file validation section
 	fread((char *)&checkhead,1, sizeof(d00header),f);
 
@@ -1224,29 +1627,97 @@ byte Cd00Player_load(char *filename){
 		Print_Loaded("EDlib Tracker 1",filename,"       ");
 		Music_Add_Interrupt(header1->speed);
 		gotoxy(60,25); 
-		textattr(RED << 4 | WHITE);
+		textattr(Color_Error);
 		cprintf("LOADED   (BUGGY)  ");
 	}
 	return true;	
 }
 
+byte CheradPlayer_load(char *filename){
+	word i,size,offset;
+	FILE *f = fopen(filename,"rb"); if(!f) return false;
+
+	// file validation
+	//	!fp.extension(filename, ".sdb") &&
+	//	!fp.extension(filename, ".agd") &&
+	//	!fp.extension(filename, ".ha2"))
+	//
+	fseek(f, 0L, SEEK_END);
+	size = ftell(f);
+	fseek(f, 0L, SEEK_SET);
+	// Read entire file into memory (data)
+	fread(ADPLUG_music_data,1,size,f);
+	fclose(f);
+	// Detect compression
+	comp = 0;
+	// Process file header
+	if (size < 52) goto failure;
+	if (size < *(word*)ADPLUG_music_data) goto failure;
+	nInsts = (size - *(word *)ADPLUG_music_data) / HERAD_INST_SIZE;
+	if ( nInsts == 0 ) goto failure;
+
+	offset = *(word *)(ADPLUG_music_data + 2);
+	if ( offset != 0x32 && offset != 0x52 ) goto failure;
+
+	AGD = offset == 0x52;
+	wLoopStart = *(word *)(ADPLUG_music_data + 0x2C);
+	wLoopEnd = *(word *)(ADPLUG_music_data + 0x2E);
+	wLoopCount = *(word *)(ADPLUG_music_data + 0x30);
+	wSpeed = *(word *)(ADPLUG_music_data + 0x32);
+	if (wSpeed == 0) goto failure;
+	nTracks = 0;
+	for (i = 0; i < HERAD_MAX_TRACKS; i++){
+		if ( *(word *)(ADPLUG_music_data + 2 + i * 2) == 0 ) break;
+		nTracks++;
+	}
+	for (i = 0; i < nTracks; i++){
+		word next;
+		offset = *(word *)(ADPLUG_music_data + 2 + i * 2) + 2;
+		next = (i < HERAD_MAX_TRACKS - 1 ? *(word *)(ADPLUG_music_data + 2 + (i + 1) * 2) + 2 : *(word *)ADPLUG_music_data);
+		if (next <= 2) next = *(word *)ADPLUG_music_data;
+		track[i].size = next - offset;
+		//printf("size %i\n",track[i].size);
+		//track[i].data = new uint8_t[track[i].size];
+		memcpy(track[i].data, ADPLUG_music_data + offset, track[i].size);
+	}
+	//inst = new herad_inst[nInsts];
+	offset = *(word *)ADPLUG_music_data;
+	v2 = true;
+	for (i = 0; i < nInsts; i++){
+		memcpy(her_inst[i].data, ADPLUG_music_data + offset + i * HERAD_INST_SIZE, HERAD_INST_SIZE);
+		if (v2 && her_inst[i].param.mode == 0)v2 = false; // 0 1 HERAD_INSTMODE_SDB1)
+	}
+	//delete[] data;
+	goto good;
+
+failure:
+	//delete[] data;
+	return false;
+
+good:
+	//rewind(0);
+
+	return true;
+}
+
 //LOADERS TO DO:
 // CMF HSC DMO
-
 //MAYBE
 //A2M? Sierra?, Lucasarts?
 
 void Load_Music(char *filename){
 	//CimfPlayer_load("KICKPANT.IMF");
 	if (!file_extension(filename,"IMF") || !file_extension(filename,"DMF") || !file_extension(filename,"WLF")) CimfPlayer_load(filename);
-	else if (!file_extension(filename,"RAD")) CradPlayer_load(filename);
-	else if (!file_extension(filename,"SA2")) Csa2Player_load(filename);
-	else if (!file_extension(filename,"AMD")) CamdPlayer_load(filename);
+	else if (!file_extension(filename,"RAD")) {MOD_PCM = 0; CradPlayer_load(filename);}
+	else if (!file_extension(filename,"RAS")) {MOD_PCM = 1; CradPlayer_load(filename);}
+	else if (!file_extension(filename,"SA2")) {MOD_PCM = 0; Csa2Player_load(filename);}
+	else if (!file_extension(filename,"AMD")) {MOD_PCM = 0; CamdPlayer_load(filename);}
 	else if (!file_extension(filename,"LDS")) CldsPlayer_load(filename);
 	else if (!file_extension(filename,"D00")) Cd00Player_load(filename);
+	else if (!file_extension(filename,"SDB")) CheradPlayer_load(filename);
 	else {
 		gotoxy(59,25);
-		textattr(RED << 4 | WHITE);
+		textattr(Color_Error);
 		cprintf(" NOT SUPPORTED  ");
 	}
 }
@@ -1254,7 +1725,7 @@ void Load_Music(char *filename){
 //INIT RAM AND etc
 extern byte OPL2LPT;
 void Init(){
-	int i;
+	int i,j;
 	asm CLI
 	old_time_handler = getvect(0x1C);
 	asm STI
@@ -1266,35 +1737,71 @@ void Init(){
 	for (i = 0; i < 64*9; i++) {
 		if ((tracks[i] = calloc(64,5)) == NULL) {printf("Not enough RAM"); exit(1);}
 	}
-	//ADPLUG_music_data = (unsigned char*) &tracks[0];
-	if ((ADPLUG_music_data = farcalloc(65535,1)) == NULL) {
+	
+	//To save ram I use allocated tracks data. I think this avoids overwritting tracks pointers
+	ADPLUG_music_data = (unsigned char*) (tracks+36864); 
+	/*if ((ADPLUG_music_data = farcalloc(65535,1)) == NULL) {
 		printf("Not enough RAM");
 		exit(1);
-	}
+	}*/
 	
 	//if ((lds_positions = calloc(1024,sizeof(LDS_Position))) == NULL) {printf("Not enough RAM"); exit(1);}
 	//if ((lds_channel = calloc(9,sizeof(LDS_Channel))) == NULL) {printf("Not enough RAM"); exit(1);}
 	lds_positions = (LDS_Position*) ADPLUG_music_data;
 	lds_channel = (LDS_Channel*) (ADPLUG_music_data + (1024*sizeof(LDS_Position)));
+	lds_DIV1216 = (int*) calloc(2048,2);
+	//precalculate lds value/(12 * 16) - 1
+	for (i = 0; i < 2048; i++) lds_DIV1216[i] = i/(12 * 16) - 1;
+	//Precalculate EDLIB incredibly messy and slow volume format (it kills 8088 and 8086 CPUs)
+	for (i = 0; i < 64; i++) {
+		for (j = 0; j < 64; j++) d00_MUL64_DIV63[i][j] = (int)i*j/63;
+	}
 	
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0;
+	
+	
+	//Herad
+	for (i = 0; i < 21; i++) track[i].data = calloc(8192,1);
+	MOD_DATA = calloc(65535,1);
+	
+	//If Sound Blaster
+	sb_setup();	
+
+	Non_Interrupt_Player = &Void_function;
+	
+	Adlib_Detect();
 }
 
 void Exit_Dos(){
 	int i;
+	
+	sb_deinit();
+	
 	Music_Remove_Interrupt();
 	opl2_clear();
 
-	free(ADPLUG_music_data);
+	for (i = 0; i < 21; i++) free(track[i].data);
 	for (i = 0; i < 64; i++) free(tracks[i]);
 	free(tracks);
-	//free(lds_positions);
-	//free(lds_channel);
+	free(lds_DIV1216);
 	system("cls");
 	chdir(Initial_working_dir);
 	
-	Set_Tiles("Font_VGA.png");
+	//CREATE MOD FILE
+	//Only a few effects will be lost, but we can recreate them with looped samples
+	/*modfile = fopen("test.mod","wb");
+	fwrite("Loudness to MOD",1,15,modfile);
+	fputc(0,modfile);
+	fseek(modfile, 950, SEEK_SET);
+	fputc(63,modfile); fputc(0,modfile); //size 1
+	for (i = 0; i < 64; i++) fputc(i,modfile);//pattern
+	fseek(modfile, 1080, SEEK_SET);
+	fwrite("9CHN",1,4,modfile);//9 channels
+	fwrite(MOD_DATA,1,65535,modfile);
+	fclose(modfile);
+
+	free(MOD_DATA);*/
 	
 	//Reset text mode
 	asm mov ax, 3h
@@ -1405,34 +1912,38 @@ void setnote(unsigned char chan, int note){
 }
 
 void playnote(unsigned char chan){
-	unsigned char op = CPlayer_op_table[chan], insnr = channel[chan].inst;
-	unsigned char *data = (char*) &inst[insnr].data;
 	Key_Hit[chan] = 1;//For visualizer bars
-	if(!(flags & NoKeyOn)) opl2_write(0xb0 + chan, 0);	// stop old note
-	opl2_write(0x01,0x20);
-	//opl2_write(0x08,0x8F);
-	// set instrument data
-	opl2_write(0x20 + op, data[1]);
-	opl2_write(0x23 + op, data[2]);
-	opl2_write(0x60 + op, data[3]);
-	opl2_write(0x63 + op, data[4]);
-	opl2_write(0x80 + op, data[5]);
-	opl2_write(0x83 + op, data[6]);
-	opl2_write(0xe0 + op, data[7]);
-	opl2_write(0xe3 + op, data[8]);
-	opl2_write(0xc0 + chan, data[0]);
-	//opl2_write(0xbd, inst[insnr].data[0]);	// set misc. register //inst[insnr].misc
-
-	// set frequency, volume & play
-	channel[chan].key = 1;
-	setfreq(chan);
+	if (MOD_PCM && chan < 2){
+		sb_play_sample(chan,11050);
+	} else {
+		unsigned char op = CPlayer_op_table[chan], insnr = channel[chan].inst;
+		unsigned char *data = (char*) &inst[insnr].data;
+		if(!(flags & NoKeyOn)) opl2_write(0xb0 + chan, 0);	// stop old note
+		opl2_write(0x01,0x20);
+		//opl2_write(0x08,0x8F);
+		// set instrument data
+		opl2_write(0x20 + op, data[1]);
+		opl2_write(0x23 + op, data[2]);
+		opl2_write(0x60 + op, data[3]);
+		opl2_write(0x63 + op, data[4]);
+		opl2_write(0x80 + op, data[5]);
+		opl2_write(0x83 + op, data[6]);
+		opl2_write(0xe0 + op, data[7]);
+		opl2_write(0xe3 + op, data[8]);
+		opl2_write(0xc0 + chan, data[0]);
+		//opl2_write(0xbd, inst[insnr].data[0]);	// set misc. register //inst[insnr].misc
 	
-	if (flags & Faust) {
-		channel[chan].vol2 = 63;
-		channel[chan].vol1 = 63;
+		// set frequency, volume & play
+		channel[chan].key = 1;
+		setfreq(chan);
+		
+		if (flags & Faust) {
+			channel[chan].vol2 = 63;
+			channel[chan].vol1 = 63;
+		}
+		
+		setvolume(chan);
 	}
-	
-	setvolume(chan);
 }
 
 byte resolve_order(){
@@ -1541,6 +2052,8 @@ void interrupt CmodPlayer_update(void){
 	unsigned char	donote, pattnr, chan, info1, info2, info, pattern_delay;
 	unsigned short	track;
 	unsigned long	row;
+	int note;
+	mod_tracks *mtrack;
 	asm CLI //disable interrupts
 	if(!speed) return;// song full stop
 		
@@ -1562,10 +2075,10 @@ void interrupt CmodPlayer_update(void){
 						case 253: cchan->key = 0; setfreq(chan); break;	// release sustaining note
 						case 254: cchan->arppos = arplist[cchan->arppos]; break; // arpeggio loop
 						default: if(arpcmd[cchan->arppos]) {
-							if(arpcmd[cchan->arppos] / 10)
-							opl2_write(0xe3 + CPlayer_op_table[chan], arpcmd[cchan->arppos] / 10 - 1);
-							if(arpcmd[cchan->arppos] % 10)
-							opl2_write(0xe0 + CPlayer_op_table[chan], (arpcmd[cchan->arppos] % 10) - 1);
+							int a = arpcmd[cchan->arppos] / 10;
+							int b = arpcmd[cchan->arppos] % 10;
+							if(a) opl2_write(0xe3 + CPlayer_op_table[chan], a - 1);
+							if(b) opl2_write(0xe0 + CPlayer_op_table[chan], b - 1);
 							if(arpcmd[cchan->arppos] < 10)	// ?????
 							opl2_write(0xe0 + CPlayer_op_table[chan], arpcmd[cchan->arppos] - 1);
 						}
@@ -1607,18 +2120,16 @@ void interrupt CmodPlayer_update(void){
 				if(cchan->fx == 5) tone_portamento(chan,cchan->portainfo);
 				else vibrato(chan,cchan->vibinfo1,cchan->vibinfo2);
 			case 10: // SA2 volume slide
-				if(mod_del % 4) break;	
+				if(mod_del & 3) break;	
 				if(info1) vol_up(chan,info1);
 				else vol_down(chan,info2);
 				setvolume(chan);
 			break;
 			case 14: // retrig note
-				if(info1 == 3)	
-					if(!(mod_del % (info2+1)))
-						playnote(chan);
+				//if(info1 == 3)	if(!(mod_del % (info2+1))) playnote(chan);
 			break;
 			case 16: // AMD volume slide
-				if(mod_del % 4) break;	
+				if(mod_del & 3) break;	
 				if(info1) vol_up_alt(chan,info1);
 				else vol_down_alt(chan,info2);
 				setvolume(chan);
@@ -1650,7 +2161,6 @@ void interrupt CmodPlayer_update(void){
 	// play row
 	pattern_delay = 0;
 	row = rw;
-	
 	for(chan = 0; chan < nchans; chan++) {
 		mod_channel *cchan = &channel[chan];
 		// channel active?
@@ -1660,30 +2170,30 @@ void interrupt CmodPlayer_update(void){
 		else track--;
 		
 		//AdPlug_LogWrite("%3d%3d%2X%2X%2X|", tracks[track][row].note,tracks[track][row].inst, tracks[track][row].command,tracks[track][row].param1, tracks[track][row].param2);
-		
+		mtrack = &tracks[track][row];
 		donote = 0;
-		if(tracks[track][row].inst) {
-			cchan->inst = tracks[track][row].inst - 1;
+		if(mtrack->inst) {
+			cchan->inst = mtrack->inst - 1;
 			if (!(flags & Faust)) {
 				cchan->vol1 = 63 - (inst[cchan->inst].data[10] & 63);
 				cchan->vol2 = 63 - (inst[cchan->inst].data[9] & 63);
 				setvolume(chan);
 			}
 		}
-		
-		if(tracks[track][row].note && tracks[track][row].command != 3) {	// no tone portamento
-			cchan->note = tracks[track][row].note;
-			setnote(chan,tracks[track][row].note);
+		note = mtrack->note;
+		if(note && mtrack->command != 3) {	// no tone portamento
+			cchan->note = note;
+			setnote(chan,note);
 			cchan->nextfreq = cchan->freq;
 			cchan->nextoct = cchan->oct;
 			cchan->arppos = inst[cchan->inst].arpstart;
 			cchan->arpspdcnt = 0;
 			// handle key off
-			if(tracks[track][row].note != 127) donote = 1;
+			if(note != 127) donote = 1;
 		}
-		cchan->fx = tracks[track][row].command;
-		cchan->info1 = tracks[track][row].param1;
-		cchan->info2 = tracks[track][row].param2;
+		cchan->fx = mtrack->command;
+		cchan->info1 = mtrack->param1;
+		cchan->info2 = mtrack->param2;
 		
 		if(donote) playnote(chan);
 	
@@ -1694,13 +2204,13 @@ void interrupt CmodPlayer_update(void){
 		else info = (cchan->info1 << 4) + cchan->info2;
 		switch(cchan->fx) {
 			case 3: // tone portamento
-				if(tracks[track][row].note) {
-				if(tracks[track][row].note < 13) cchan->nextfreq = CmodPlayer_sa2_notetable[tracks[track][row].note - 1];
+				if(note) {
+				if(note < 13) cchan->nextfreq = CmodPlayer_sa2_notetable[note - 1];
 				else {
-					if(tracks[track][row].note % 12 > 0) cchan->nextfreq = CmodPlayer_sa2_notetable[(tracks[track][row].note % 12) - 1];
+					if(note % 12 > 0) cchan->nextfreq = CmodPlayer_sa2_notetable[(note % 12) - 1];
 					else cchan->nextfreq = CmodPlayer_sa2_notetable[11];
-					cchan->nextoct = (tracks[track][row].note - 1) / 12;
-					if(tracks[track][row].note == 127) { // handle key off
+					cchan->nextoct = noteDIV12[note - 1];//(tracks[track][row].note - 1) / 12;
+					if(note == 127) { // handle key off
 						cchan->nextfreq = cchan->freq;
 						cchan->nextoct = cchan->oct;
 					}
@@ -1971,7 +2481,7 @@ void interrupt CldsPlayer_update(void){
 	LDS_Channel		*c;
 	
 	asm CLI
-	
+
 	if(!playing) return ;//false;
 
 	// handle fading
@@ -2011,9 +2521,9 @@ void interrupt CldsPlayer_update(void){
 			if(!c->packwait) {
 				unsigned short	patnum = lds_positions[posplay * 9 + chan].patnum;
 				unsigned char	transpose = lds_positions[posplay * 9 + chan].transpose;
-
 				comword = lds_patterns[patnum + c->packpos];
 				comhi = comword >> 8; comlo = comword & 0xff;
+				//printf("0 ");
 				if(comword){
 					if(comhi == 0x80) c->packwait = comlo;
 					else {
@@ -2096,10 +2606,21 @@ void interrupt CldsPlayer_update(void){
 						}
 					}
 				}
+				//Writte pattrens
+				/*
+				MOD_DATA[offset] = (instrument_number & 0xF0) + (note >> 8); //byte 1
+				MOD_DATA[offset+1] = note & 0xFF; //byte 2
+				MOD_DATA[offset+2] = ((instrument_number & 0x0F) << 4) + (effect & 0x0F);//byte 3
+				MOD_DATA[offset+3] = command; //byte 4
+				
+				//for (i = 0; i < chan; i++) printf(" -");
+				printf("%i %i\n",c->packpos,chan);
+				MOD_DATA[(c->packpos*9*4) + (chan*4)] = 6;*/
 				c->packpos++;
+				
 			} else c->packwait--;
 		}
-
+		
 		tempo_now = tempo;
 
 		//The continue table is updated here, but this is only used in the
@@ -2126,7 +2647,7 @@ void interrupt CldsPlayer_update(void){
 			}
 		}
 	} else tempo_now--;
-  
+
 	// make effects
 	for(chan = 0; chan < 9; chan++) {
 		c = &lds_channel[chan];
@@ -2166,7 +2687,7 @@ void interrupt CldsPlayer_update(void){
 			if(arpreg >= 0x800) arpreg = c->lasttune - (arpreg ^ 0xff0) - 16;
 			else arpreg += c->lasttune;
 			freq = lds_frequency[arpreg % (12 * 16)];
-			octave = arpreg / (12 * 16) - 1;
+			octave = lds_DIV1216[arpreg];//arpreg / (12 * 16) - 1;
 			lds_setregs(0xa0 + chan, freq & 0xff);
 			lds_setregs_adv(0xb0 + chan, 0x20, ((octave << 2) + (freq >> 8)) & 0xdf);
 		} else { // vibrato
@@ -2181,7 +2702,7 @@ void interrupt CldsPlayer_update(void){
 					else tune += arpreg;
 				
 					freq = lds_frequency[tune % (12 * 16)];
-					octave = tune / (12 * 16) - 1;
+					octave = lds_DIV1216[tune];//tune / (12 * 16) - 1;
 					lds_setregs(0xa0 + chan, freq & 0xff);
 					lds_setregs_adv(0xb0 + chan, 0x20, ((octave << 2) + (freq >> 8)) & 0xdf);
 					c->vibcount += c->vibspeed;
@@ -2191,7 +2712,7 @@ void interrupt CldsPlayer_update(void){
 						else tune = c->lasttune + arpreg;
 				
 						freq = lds_frequency[tune % (12 * 16)];
-						octave = tune / (12 * 16) - 1;
+						octave = lds_DIV1216[tune];//tune / (12 * 16) - 1;
 						lds_setregs(0xa0 + chan, freq & 0xff);
 						lds_setregs_adv(0xb0 + chan, 0x20, ((octave << 2) + (freq >> 8)) & 0xdf);
 					}
@@ -2204,7 +2725,7 @@ void interrupt CldsPlayer_update(void){
 					else tune = c->lasttune + arpreg;
 				
 					freq = lds_frequency[tune % (12 * 16)];
-					octave = tune / (12 * 16) - 1;
+					octave = lds_DIV1216[tune];//tune / (12 * 16) - 1;
 					lds_setregs(0xa0 + chan, freq & 0xff);
 					lds_setregs_adv(0xb0 + chan, 0x20, ((octave << 2) + (freq >> 8)) & 0xdf);
 				}
@@ -2257,6 +2778,7 @@ void interrupt CldsPlayer_update(void){
 			if(allvolume != 0) lds_setregs_adv(0x43 + regnum, 0xc0, ((((c->volcar & 0x3f) * allvolume) >> 8) ^ 0x3f) & 0x3f);
 		}
 	}
+	
 	//Return
 	asm mov al,020h
 	asm mov dx,020h
@@ -2310,19 +2832,29 @@ unsigned int d00_getsubsongs(){
 	else return header->subsongs;
 }
 
+//60.558
 void d00_setvolume(unsigned char chan){
 	unsigned char	op = CPlayer_op_table[chan];
 	unsigned short	insnr = d00_channel[chan].inst;
+	struct Sinsts *inst = &d00_inst[insnr];
+	d00channel *channel = &d00_channel[chan];
+	unsigned char chvol = 63 - channel->vol;
 	
+// 1 - Original
 	//byte a = (int)(63-((63-(d00_inst[insnr].data[2] & 63))/63.0)*(63-d00_channel[chan].vol)) + (d00_inst[insnr].data[2] & 192);
 	//byte b = (int)(63-((63-d00_channel[chan].modvol)/63.0)*(63-d00_channel[chan].vol)) + (d00_inst[insnr].data[7] & 192);
 	
-	//Optimized for integer operations. by Miguel Angel from RetroPC telegram Group.
-	byte a = 63-(int)(63-(d00_inst[insnr].data[2] & 63))*(int)(63-d00_channel[chan].vol)/64 + (d00_inst[insnr].data[2] & 192);
-	byte b = 63-(int)(63-((63-d00_channel[chan].modvol))*(63-d00_channel[chan].vol))/64 + (d00_inst[insnr].data[7] & 192);
+// 2 - Optimized for integer operations. by Miguel Angel from RetroPC telegram Group.
+	//byte a = 63-((63-(inst->data[2] & 63))*chvol)/63 + (inst->data[2] & 192);
+	//byte b = 63-((63-((63-channel->modvol))*chvol)/63) + (inst->data[7] & 192);
+	
+// 3 - Precalculated division and multiplication (uses 8k)
+	byte a = 63- d00_MUL64_DIV63[63-(inst->data[2] & 63)][chvol] + (inst->data[2] & 192);
+	byte b = 63- /*d00_MUL64_DIV63[63-((63-channel->modvol))][0]*/ + (inst->data[7] & 192);
+	
 	opl2_write(0x43 + op, a);
-	if(d00_inst[insnr].data[10] & 1) opl2_write(0x40 + op,b);
-	else opl2_write(0x40 + op,d00_channel[chan].modvol + (d00_inst[insnr].data[7] & 192));
+	if(inst->data[10] & 1) opl2_write(0x40 + op,b);
+	else opl2_write(0x40 + op,channel->modvol + (inst->data[7] & 192));
 }
 
 void d00_setfreq(unsigned char chan){
@@ -2497,9 +3029,8 @@ void d00_vibrato(unsigned char chan){
 	d00_setfreq(chan);
 }
 
-//61.194
-//61.050
-void interrupt Cd00Player_update(void) {
+//60.366
+void /*interrupt*/ Cd00Player_update() {
 	unsigned char	c,cnt,trackend=0,fx,note;
 	unsigned short	ord,*patt,buf,fxop;
 	
@@ -2514,20 +3045,16 @@ void interrupt Cd00Player_update(void) {
 
 		if(channel->spfx != 0xffff) {	// SpFX
 			struct Sspfx *spfx_chan = &spfx[channel->spfx];
-			if(channel->fxdel)
-				channel->fxdel--;
+			if(channel->fxdel) channel->fxdel--;
 			else {
 				channel->spfx = spfx_chan->ptr;
 				channel->fxdel = spfx_chan->duration;
 				channel->inst = spfx_chan->instnr & 0xfff;
 				spfx_chan = &spfx[channel->spfx];
-				if(spfx_chan->modlev != 0xff)
-					channel->modvol = spfx_chan->modlev;
+				if(spfx_chan->modlev != 0xff) channel->modvol = spfx_chan->modlev;
 				d00_setinst(c);
-				if(spfx_chan->instnr & 0x8000)	// locked frequency
-					note = spfx_chan->halfnote;
-				else												// unlocked frequency
-					note = spfx_chan->halfnote + channel->note;
+				if(spfx_chan->instnr & 0x8000) note = spfx_chan->halfnote; // locked frequency
+				else note = spfx_chan->halfnote + channel->note;			// unlocked frequency
 				channel->freq = d00_notetable[note] + (noteDIV12[note] << 10);
 				d00_setfreq(c);
 			}
@@ -2535,91 +3062,74 @@ void interrupt Cd00Player_update(void) {
 			d00_setvolume(c);
 		}
 
-		if(channel->levpuls != 0xff)	// Levelpuls
-			if(channel->frameskip)
-				channel->frameskip--;
+		if(channel->levpuls != 0xff){	// Levelpuls
+			if(channel->frameskip) channel->frameskip--;
 			else {
 				channel->frameskip = inst->timer;
-				if(channel->fxdel)
-					channel->fxdel--;
+				if(channel->fxdel) channel->fxdel--;
 				else {
 					channel->levpuls = levpuls[channel->levpuls].ptr - 1;
 					channel->fxdel = levpuls[channel->levpuls].duration;
-					if(levpuls[channel->levpuls].level != 0xff)
-						channel->modvol = levpuls[channel->levpuls].level;
+					if(levpuls[channel->levpuls].level != 0xff) channel->modvol = levpuls[channel->levpuls].level;
 				}
 				channel->modvol += levpuls[channel->levpuls].voladd; channel->modvol &= 63;
 				d00_setvolume(c);
 			}
-
+		}
 	// song handling
 		if(version < 3 ? channel->del : channel->del <= 0x7f) {
 			if(version == 4)	// v4: hard restart SR
 				if(channel->del == inst->timer)
-					if(channel->nextnote)
-						opl2_write(0x83 + CPlayer_op_table[c], inst->sr);
-			if(version < 3)
-				channel->del--;
+					if(channel->nextnote) opl2_write(0x83 + CPlayer_op_table[c], inst->sr);
+			if(version < 3) channel->del--;
 			else
-				if(channel->speed)
-					channel->del += channel->speed;
-				else {
-					channel->seqend = 1;
-					continue;
-				}
+				if(channel->speed) channel->del += channel->speed;
+				else { channel->seqend = 1; continue;}
 		} else {
-
 			if(channel->speed) {
 				if(version < 3) channel->del = channel->speed;
 				else {
 					channel->del &= 0x7f;
 					channel->del += channel->speed;
 				}
-			} else {
-				channel->seqend = 1;
-				continue;
-			}
-			if(channel->rhcnt) {	// process pending REST/HOLD events
-				channel->rhcnt--;
-				continue;
-			}
+			} else { channel->seqend = 1; continue;}
+			if(channel->rhcnt) { channel->rhcnt--; continue;}	// process pending REST/HOLD events
 readorder:	// process arrangement (orderlist)
 			ord = channel->order[channel->ordpos];
 			switch(ord) {
-			case 0xfffe: channel->seqend = 1; continue;	// end of arrangement stream
-			case 0xffff:										// jump to order
-				channel->ordpos = channel->order[channel->ordpos+1];
-				channel->seqend = 1;
-				goto readorder;
-			default:
-				if(ord >= 0x9000) {		// set speed
-					channel->speed = ord & 0xff;
-					ord = channel->order[channel->ordpos - 1];
-					channel->ordpos++;
-				} else
-					if(ord >= 0x8000) {	// transpose track
-						channel->transpose = ord & 0xff;
-						if(ord & 0x100)
-							channel->transpose = -channel->transpose;
-						ord = channel->order[++channel->ordpos];
-					}
-				patt = (unsigned short *)((char *)filedata + seqptr[ord]);
-				break;
+				case 0xfffe: channel->seqend = 1; continue;	// end of arrangement stream
+				case 0xffff:										// jump to order
+					channel->ordpos = channel->order[channel->ordpos+1];
+					channel->seqend = 1;
+					goto readorder;
+				default:
+					if(ord >= 0x9000) {		// set speed
+						channel->speed = ord & 0xff;
+						ord = channel->order[channel->ordpos - 1];
+						channel->ordpos++;
+					} else
+						if(ord >= 0x8000) {	// transpose track
+							channel->transpose = ord & 0xff;
+							if(ord & 0x100)
+								channel->transpose = -channel->transpose;
+							ord = channel->order[++channel->ordpos];
+						}
+					patt = (unsigned short *)((char *)filedata + seqptr[ord]);
+					break;
 			}
 readseq:	// process sequence (pattern)
-			if(!version)	// v0: always initialize rhcnt
-				channel->rhcnt = channel->irhcnt;
+			if(!version) channel->rhcnt = channel->irhcnt;	// v0: always initialize rhcnt
 			if(patt[channel->pattpos] == 0xffff) {	// pattern ended?
 				channel->pattpos = 0;
 				channel->ordpos++;
 				goto readorder;
 			}
-			cnt = HIBYTE(patt[channel->pattpos]);
-			note = LOBYTE(patt[channel->pattpos]);
+			cnt = patt[channel->pattpos] >> 8;
+			note = patt[channel->pattpos] & 0xff;
 			fx = patt[channel->pattpos] >> 12;
 			fxop = patt[channel->pattpos] & 0x0fff;
 			channel->pattpos++;
-			channel->nextnote = LOBYTE(patt[channel->pattpos]) & 0x7f;
+			channel->nextnote = patt[channel->pattpos] & 0x7f;//& 0xff) & 0x7f;
 			if(version ? cnt < 0x40 : !fx) {	// note event
 				
 				switch(note) {
@@ -2694,6 +3204,7 @@ readseq:	// process sequence (pattern)
 				}
 				continue;	// event is complete
 			} else {		// effect event
+				struct Sinsts *sinst = &d00_inst[fxop];
 				switch(fx) {
 					case 6:		// Cut/Stop Voice
 						buf = channel->inst;
@@ -2723,8 +3234,8 @@ readseq:	// process sequence (pattern)
 						channel->ispfx = 0xffff;
 						channel->spfx = 0xffff;
 						channel->inst = fxop;
-						channel->modvol = d00_inst[fxop].data[7] & 63;
-						if(version < 3 && version && d00_inst[fxop].tunelev) channel->ilevpuls = d00_inst[fxop].tunelev - 1; // Set LevelPuls
+						channel->modvol = sinst->data[7] & 63;
+						if(version < 3 && version && sinst->tunelev) channel->ilevpuls = sinst->tunelev - 1; // Set LevelPuls
 						else {
 							channel->ilevpuls = 0xff;
 							channel->levpuls = 0xff;
@@ -2735,11 +3246,9 @@ readseq:	// process sequence (pattern)
 				}
 				goto readseq;	// event is incomplete, note follows
 			}
-			
 		}
 	}
-	for(c=0;c<9;c++)
-		if(d00_channel[c].seqend) trackend++;
+	for(c=0;c<9;c++) if(d00_channel[c].seqend) trackend++;
 	if(trackend == 9) songend = 1;
 
 	asm mov al,020h
@@ -2749,6 +3258,76 @@ readseq:	// process sequence (pattern)
 	return ;//!songend;
 }
 
+
+//HERAD PLAYER
+void CheradPlayer_rewind(int subsong){
+/*	dword j;
+	wTime = 0;
+	songend = false;
+
+	ticks_pos = -1; // there's always 1 excess tick at start
+	total_ticks = 0;
+	loop_pos = -1;
+	loop_times = 1;
+
+	for (int i = 0; i < nTracks; i++)
+	{
+		track[i].pos = 0;
+		j = 0;
+		while (track[i].pos < track[i].size)
+		{
+			j += GetTicks(i);
+			switch (track[i].data[track[i].pos++] & 0xF0)
+			{
+			case 0x80:	// Note Off
+				track[i].pos += (v2 ? 1 : 2);
+				break;
+			case 0x90:	// Note On
+			case 0xA0:	// Unused
+			case 0xB0:	// Unused
+				track[i].pos += 2;
+				break;
+			case 0xC0:	// Program Change
+			case 0xD0:	// Aftertouch
+			case 0xE0:	// Pitch Bend
+				track[i].pos++;
+				break;
+			default:
+				track[i].pos = track[i].size;
+				break;
+			}
+		}
+		if (j > total_ticks)
+			total_ticks = j;
+		track[i].pos = 0;
+		track[i].counter = 0;
+		track[i].ticks = 0;
+		chn[i].program = 0;
+		chn[i].playprog = 0;
+		chn[i].note = 0;
+		chn[i].keyon = false;
+		chn[i].bend = HERAD_BEND_CENTER;
+		chn[i].slide_dur = 0;
+	}
+	if (v2)
+	{
+		if (!wLoopStart || wLoopCount) wLoopStart = 1; // if loop not specified, start from beginning
+		if (!wLoopEnd || wLoopCount) wLoopEnd = getpatterns() + 1; // till the end
+		if (wLoopCount) wLoopCount = 0; // repeats forever
+	}
+
+	opl->init();
+	opl->write(1, 32); // Enable Waveform Select
+	opl->write(0xBD, 0); // Disable Percussion Mode
+	opl->write(8, 64); // Enable Note-Sel
+	if (AGD)
+	{
+		opl->setchip(1);
+		opl->write(5, 1); // Enable OPL3
+		opl->write(4, 0); // Disable 4OP Mode
+		opl->setchip(0);
+	}*/
+}
 
 
 

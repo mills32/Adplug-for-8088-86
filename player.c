@@ -44,6 +44,7 @@ typedef unsigned long  dword;
 
 byte *XGA=(byte *)0xA0000000L;			/* this points to graphics memory. */
 byte *XGA_TEXT_MAP=(byte *)0xB8000000L;	/* this points to text MAP - MAP attributes */
+byte *MDA_TEXT_MAP=(byte *)0xB0000000L;
 word *PARALEL1=(word *)0x00400008L;		//Paralel port address
 word *PARALEL2=(word *)0x0040000AL;
 word *PARALEL3=(word *)0x0040000CL;
@@ -53,7 +54,7 @@ byte GRAPHICS_CARD = 2;
 //ADLIB/SBlaster = 388
 //SB16+ = 220 or 240
 //opl2lpt = 378, 379 y 37A
-int ADLIB_PORT = 0;//0x0388;
+int ADLIB_PORT = 0;//0x388;
 byte OPL2LPT = 0;
 
 //Visualizer bars colors
@@ -82,17 +83,8 @@ byte VBar_Selector[] = {
 
 
 //MISC
-void WaitVsync(){
-	asm mov		dx,003dah
-	WaitNotVsync:
-	asm in      al,dx
-	asm test    al,08h
-	asm jnz		WaitNotVsync
-	WaitVsync:
-	asm in      al,dx
-	asm test    al,08h
-	asm jz		WaitVsync
-}
+void WaitVsync_MDA();
+void WaitVsync_NOMDA();
 
 void Clearkb(){
 	asm mov ah,00ch
@@ -130,6 +122,15 @@ byte file_number = 2;
 byte pos_number = 0;
 word selected_cell = 0;
 byte control_timer = 0;
+byte VIS_ON = 1;
+byte v_timer = 0;
+
+byte Color_Selected = 0;
+byte Color_Not_Selected = 0;
+byte Color_Erase_Bars = 0;
+byte Color_Loading = 0;
+byte Color_Loaded = 0;
+byte Color_Error = 0;
 
 extern unsigned char C_Volume[];
 
@@ -139,6 +140,8 @@ void Control_Menu();
 byte Read_Dir();
 void Print_Dir(byte pos);
 void Display_Bars();
+
+void test();
 
 void main(){
 	//byte load;
@@ -150,12 +153,13 @@ void main(){
 	Read_Dir();
 	Print_Dir(0);
 	//Draw selection
-	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[(160*8)+18+i] = GREEN << 4 | WHITE;
+	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[(160*8)+18+i] = Color_Selected;
 	
 	while(running){
 		Control_Menu();
-		Display_Bars();
-		WaitVsync();
+		if (VIS_ON) Display_Bars();
+		if (GRAPHICS_CARD == 1) WaitVsync_MDA();
+		else WaitVsync_NOMDA();
 	}
 	Exit_Dos();
 }
@@ -165,17 +169,72 @@ void main(){
 
 void Setup(){
 	int key = 0;
+	int i;
+	union REGS regs;
 	system("cls");
-	printf("\n\n\n\n\n\n");
-	printf("                              SELECT GRAPHICS CARD\n\n");
-	printf("                             1 for MDA or Hercules\n");
-	printf("                             2 for CGA or MCGA\n");
-	printf("                             3 for EGA or VGA\n\n\n");
-	printf("               Press to select, or any other key for default (CGA)");
-	while(!kbhit());
-	key = getch();
-	GRAPHICS_CARD = key-48;
-	if ((GRAPHICS_CARD == 0)||(GRAPHICS_CARD > 3)) GRAPHICS_CARD = 2;
+	//Check graphics
+	//1 MDA, Hercules; 2 CGA,  MCGA, Tandy, EGA; 3 VGA;
+	regs.h.ah=0x1A;
+	regs.h.al=0x00;
+	regs.h.bl=0x32;
+	int86(0x10, &regs, &regs);
+	
+	if (regs.h.al == 0x1A) {
+		printf("\n\n\n\n\n\n");
+		printf("                             SELECT GRAPHICS ADAPTER                            \n\n");
+		printf("                      1 for VGA\n");
+		printf("                      2 for MCGA or Bad emulator (no VRAM font support)");
+		while(!kbhit());
+		key = getch() -48;
+		if (key == 1) GRAPHICS_CARD = 3;
+		if (key == 2) GRAPHICS_CARD = 2;
+		Color_Selected = GREEN << 4 | WHITE;
+		Color_Not_Selected = BLUE << 4 | WHITE;
+		Color_Erase_Bars = BLACK << 4 | WHITE;
+		Color_Loading = BLINK | RED << 4 | WHITE;
+		Color_Loaded = BLUE << 4 | WHITE;
+		Color_Error = RED << 4 | WHITE;
+	} else {
+		regs.h.ah=0x12;
+		regs.h.bh=0x10;
+		regs.h.bl=0x10;
+		int86(0x10, &regs, &regs);
+		if (regs.h.bh == 0) {
+			printf("\nCard detected: EGA");
+			GRAPHICS_CARD = 2;
+			Color_Selected = GREEN << 4 | WHITE;
+			Color_Not_Selected = BLUE << 4 | WHITE;
+			Color_Erase_Bars = BLACK << 4 | WHITE;
+			Color_Loading = BLINK | RED << 4 | WHITE;
+			Color_Loaded = BLUE << 4 | WHITE;
+			Color_Error = RED << 4 | WHITE;
+		} else {
+			regs.h.ah=0x0F;
+			regs.h.bl=0x00;
+			int86(0x10, &regs, &regs);
+			if (regs.h.al == 0x07) {
+				printf("\nCard detected: MDA or Hercules");
+				GRAPHICS_CARD = 1;
+				Color_Selected = 0x78;
+				Color_Not_Selected = 0x10;
+				Color_Erase_Bars = 0;
+				Color_Loading = 0xF8;
+				Color_Loaded = 0x10;
+				Color_Error = 0x10;
+				for (i = 1; i < 7; i++) VBar_Colors[i] = 0x10;
+			} else {
+				printf("\nCard detected: CGA, MCGA or TANDY");
+				GRAPHICS_CARD = 2;
+				Color_Selected = GREEN << 4 | WHITE;
+				Color_Not_Selected = BLUE << 4 | WHITE;
+				Color_Erase_Bars = BLACK << 4 | WHITE;
+				Color_Loading = BLINK | RED << 4 | WHITE;
+				Color_Loaded = BLUE << 4 | WHITE;
+				Color_Error = RED << 4 | WHITE;
+			}
+		}
+	}	
+	sleep(1);
 	system("cls");	
 	Clearkb();
 	if (GRAPHICS_CARD == 3) Set_Tiles("Font_BIZ.png");//Before adding interrupt timer
@@ -191,16 +250,15 @@ void Setup(){
 	key = getch() -48;
 	system("cls");	
 	Clearkb();
-	if (key == 1) {OPL2LPT = 0;ADLIB_PORT = 0x0388;}
-	else if (key == 2) {OPL2LPT = 0;ADLIB_PORT = 0x0220;}
-	else if (key == 3) {OPL2LPT = 0;ADLIB_PORT = 0x0240;}
+	if (key == 1) {OPL2LPT = 0; ADLIB_PORT = 0x388;}
+	else if (key == 2) {OPL2LPT = 0; ADLIB_PORT = 0x220;}
+	else if (key == 3) {OPL2LPT = 0; ADLIB_PORT = 0x240;}
 	else if (key == 4) {OPL2LPT = 1; ADLIB_PORT = PARALEL1[0];}
 	else if (key == 5) {OPL2LPT = 1; ADLIB_PORT = PARALEL2[0];}
-	else ADLIB_PORT = 0x0388;
+	else ADLIB_PORT = 0x388;
 }
 
 //VISUALIZER
-byte v_timer = 0;
 void Get_Volume();
 void Display_Bars(){
 	if (v_timer == 2){
@@ -285,8 +343,8 @@ void Reset_Dir(byte pos){
 	file_number = pos;
 	//for (i = 0; i < 160*12; i+=160) memcpy(&XGA_TEXT_MAP[(160*8)+46+i],del_dir,6);
 	Print_Dir(0);
-	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[(160*8)+18+i] = BLACK << 4 | WHITE;
-	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[selected_cell+i] = BLUE << 4 | WHITE;
+	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[(160*8)+18+i] = Color_Erase_Bars;
+	for (i = 1; i < 26; i+=2) XGA_TEXT_MAP[selected_cell+i] = Color_Not_Selected;
 }
 
 void Control_Menu(){
@@ -308,7 +366,9 @@ void Control_Menu(){
 						Read_Dir();
 						Reset_Dir(2);
 					} else {
-						for (i = 1; i < 9; i++) C_Volume[i] = 0;
+						Stop_Music();
+						if (GRAPHICS_CARD == 1) for (i = 0; i < 16; i++) WaitVsync_MDA();
+						else WaitVsync_NOMDA();
 						Load_Music(dir); //LOAD
 					}
 						
@@ -321,7 +381,10 @@ void Control_Menu(){
 				case 32: Stop_Music(); break;
 				case 0: //Special Keys
 					character = getch();
-					if (character == 59) ; //F1
+					if (character == 59){ //F1
+						if (VIS_ON) VIS_ON = 0;
+						else VIS_ON = 1;
+					}
 					if ((character == 75) || (character == 77)) //left //right
 						if (file_number > 1) Reset_Dir(1); 
 					if (character == 72) if (file_number > 1) file_number--; //up
@@ -334,9 +397,9 @@ void Control_Menu(){
 			if (file_number < pos_number+1) {pos_number--; Print_Dir(pos_number);}
 			selected_cell = (160*6)+18+((file_number-pos_number)*160);
 			for (i = 1; i < 26; i+=2){
-				XGA_TEXT_MAP[selected_cell-160+i] = BLUE << 4 | WHITE;
-				XGA_TEXT_MAP[selected_cell+i] = GREEN << 4 | BLACK;
-				XGA_TEXT_MAP[selected_cell+160+i] = BLUE << 4 | WHITE;
+				XGA_TEXT_MAP[selected_cell-160+i] = Color_Not_Selected;
+				XGA_TEXT_MAP[selected_cell+i] = Color_Selected;
+				XGA_TEXT_MAP[selected_cell+160+i] = Color_Not_Selected;
 			}
 			Clearkb();
 		}
@@ -438,6 +501,45 @@ void Set_Map(){
 				case '#': color = BLUE << 4 | BLACK;break;
 			}
 			XGA_TEXT_MAP[i+1] = color; 
+			j++;
+		}
+	}
+	if (GRAPHICS_CARD == 1){
+		XGA_TEXT_MAP = MDA_TEXT_MAP;
+		for (i = 0;i <(80*25*2);i+=2){
+			//Set Character Map 
+			character = GUI_MAP_CHAR_CGA[j];
+			switch (character){
+				case '+': character = 205;break;
+				case '(': character = 201;break;
+				case ')': character = 187;break;
+				case '!': character = 186;break;
+				case '?': character = 200;break;
+				case '*': character = 188;break;
+				case '.': character = 177;break;
+				case '[': character = 223;break;
+				case '{': character = 177;break;
+			}
+			XGA_TEXT_MAP[i] = character;
+			//Set Color Map 
+			//Bits 0-2: 0 => no underline.
+			//Bit 3: 0, low intensity.
+			//Bit 7: 1 Blink, 0 no blink
+			//0x70, inverted
+			color = GUI_MAP_COL_CGA[j];
+			switch (color){
+				case '0': color = 0x0;break;
+				case '1': color = 0x10;break;
+				case '2': color = 0x10;break;
+				case '3': color = 0x70; break;
+				case '4': color = 0x10;break;
+				case '5': color = 0x78;break;
+				case '6': color = 0x10;break;
+				case '.': color = 0x10;break;
+				case '#': color = 0;break;
+			}
+			XGA_TEXT_MAP[i+1] = color; 
+			if (i > ((80*25*2)-320)) XGA_TEXT_MAP[i+1] = 1; 
 			j++;
 		}
 	}
@@ -594,7 +696,25 @@ void Set_Tiles(unsigned char *font){
 	//vga_write_reg(0x3C4, 0x01, 0x01);	//9/8DM -- 9/8 Dot Mode, text cells are 8 pixels wide
 	
 	//Write tiles
-	vga_write_reg(0x3C4, 0x04, 0x06);
+	//Write tiles
+	outport(0x3C4,0x0402);
+	outport(0x3C4,0x0704);
+	outport(0x3CE,0x0005);
+	outport(0x3CE,0x0406);
+	outport(0x3CE,0x0204);
+	
+	offset1 = 0;
+	//It looks like VGA has 8x32 character glyphs 
+	for (y = 0; y < 32*256; y+=32){
+		memcpy(&XGA[y],&data1[offset1],16);
+		offset1+=16;
+	}
+	outport(0x3C4,0x0302);
+	outport(0x3C4,0x0304);
+	outport(0x3CE,0x1005);
+	outport(0x3CE,0x0E06);
+	outport(0x3CE,0x0004);
+	/*vga_write_reg(0x3C4, 0x04, 0x06);
 	vga_write_reg(0x3Ce, 0x04, 0x02);
 	asm{
 		push bp
@@ -611,7 +731,7 @@ void Set_Tiles(unsigned char *font){
 		pop bp
 	}
 	vga_write_reg(0x3C4, 0x04, 0x03);
-	vga_write_reg(0x3CE, 0x04, 0x00);
+	vga_write_reg(0x3CE, 0x04, 0x00);*/
 	free(data);free(data1);
 }
 
