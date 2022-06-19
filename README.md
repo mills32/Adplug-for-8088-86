@@ -17,7 +17,7 @@ Conbtrols:
 - Move = UP DOWN LEFT RIGHT arrows
 - Select file = ENTER
 - Stop music = SPACEBAR
-- Enable/Disable visualizer = F1 (not implemented yet)
+- Enable/Disable visualizer = F1
 - Exit = ESC
 
 Requirements:
@@ -36,7 +36,9 @@ Supported formats:
 - AMD: Amusic Tracker - minor bugs.
 - LDS: Loudness Sound System Tracker, the best tracker for adlib - working 100% (minor bugs caused by my code).
 - D00: Edlib Tracker, The most complex tracker created for Adlib.
+  
   Edlib Tracker format 0 - Minor bugs. 
+  
   Edlib Tracker format 1 - not well supported. 
 
 I want to add: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker by Electronic Rats (HSC), Sierra games (SCI), and Lucasarts (LAA).
@@ -44,12 +46,12 @@ Also I want to add a custom RAD format I created (RAP), in which channels 0 and 
 
 ESP:
 
-Adplug Reproductor de música OPL2 para 8088-86 and 286
+Adplug Reproductor de música OPL2 para 8088-86 y 286
 --------------------------------------------
 
 Pues mas de lo mismo, quise compilar adplug para que funcionase en 8086.
 
-En realidas no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
+En realidad no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
 Si selecciones EGA o VGA en el inicio, el programa cargará gráficos para sustiruir los caracteres del modo texto de EGA 
 o VGA desde la imagen "Font_BIZ.png". Al salir a msdos, restaurará los gráficos originales de la imagen "Font_VGA.png".
 
@@ -59,7 +61,7 @@ Conbtroles:
 - Mover = Teclas direccionales
 - Seleccionar = ENTER
 - Detener Música = ESPACIO
-- Desactivar/Activar visualizador = F1 (Aun no implementado)
+- Desactivar/Activar visualizador = F1
 - Salir = ESC
 
 Requisitos:
@@ -78,7 +80,9 @@ Formatos soportados:
 - AMD: Amusic Tracker - pequeños bugs.
 - LDS: Loudness Sound System Tracker, el mejor tracker para Adlib - funcionando 100% (Pequeños bugs causados por mi código).
 - D00: Edlib Tracker, el tracker más complejo creado para Adlib.
+
   Edlib Tracker format 0 - pequeños bugs. 
+  
   Edlib Tracker format 1 - no funcionan bien. 
 
 Además quiero añadir: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker (HSC), Sierra (SCI), Lucasarts (LAA).
