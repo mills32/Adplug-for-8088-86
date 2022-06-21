@@ -30,9 +30,12 @@ Some formats are buggy.
 
 Supported formats:
 - IMF: Id's Music Format - working 100%.
-- RAD: Reality Adlib Tracker - working 100% (minor bugs caused by my code).
+- RAD: Reality Adlib Tracker v1.1 1995 - working 100% (minor bugs caused by my code).
 
   RAS: channels 0 and 1 are used to send commands to Sound Blaster to play PCM Drums, do not use with adlib.
+  Samples are 8 bit unsigned PCM (8192 or 11025Hz). Specify relative route in RAD description (Ctrl-D in RAD tracker).
+  - Sample 1: at row 3 column 0 (example: PCM/drum.wav)
+  - Sample 2: at row 6 column 0 (example: PCM/snare.wav)
 
 - SA2: Surprise! Adlib Tracker 2 - Some files play at the wrong speed.
 - AMD: Amusic Tracker - minor bugs.
@@ -79,10 +82,14 @@ Algunos formatos tienen problemas.
 
 Formatos soportados:
 - IMF: Id's Music Format - funcionando 100%.
-- RAD: Reality Adlib Tracker - funcionando 100% (Pequeños bugs causados por mi código).
+- RAD: Reality Adlib Tracker v1.1 1995 - funcionando 100% (Pequeños bugs causados por mi código).
 
   RAS: los datos de los canales 0 y 1 son utilizados para enviar instrucciones a una Sound Blaster, 
   para que reproduzca sonidos PCM para percusión. No utilizar con Adlib.
+  Los archivos de sonido deben ser PCM 8 bit unsigned (8192 o 11025Hz). Especifica la ruta relativa en la descripcion del archivo RAD
+  (Pulsando Ctrl-D en el editor RAD, accederas a la descripción).
+  - Sonido 1: en fila 3 columna 0 (ejemplo: PCM/drum.wav)
+  - Sonido 2: en fila 6 columna 0 (ejemplo: PCM/snare.wav)
 
 - SA2: Surprise! Adlib Tracker 2 - algunas canciones se reproducen a la velocidad incorrecta.
 - AMD: Amusic Tracker - pequeños bugs.
