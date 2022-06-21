@@ -44,6 +44,7 @@ void interrupt CimfPlayer_update(void);
 void interrupt CmodPlayer_update(void);
 void interrupt CldsPlayer_update(void);
 void /*interrupt*/ Cd00Player_update();
+void interrupt CVGM_update(void);
 void Exit_Dos();
 void Set_Tiles(unsigned char *font);
 	
@@ -336,6 +337,12 @@ d00header1 *header1;
 d00channel d00_channel[9];
 unsigned char *filedata;
 
+//VGM
+word vgm_music_wait = 0;
+word vgm_music_offset = 0;
+word vgm_data_size = 0;
+word vgm_loop = 0;
+word vgm_loop_size = 0;
 
 //HERAD
 #define HERAD_NUM_VOICES	9
@@ -473,6 +480,7 @@ void Get_Volume(){
 			break;
 			case 0:
 			case 5:
+			case 6:
 				if (Key_Hit[i]) C_Volume[i] = 56;
 				else if (C_Volume[i] > 4) C_Volume[i] -=4;
 				Key_Hit[i] = 0; 
@@ -804,6 +812,7 @@ void Music_Add_Interrupt(int rate){
 		case 3: setvect(0x1C, CmodPlayer_update); break; //RAD, SA2, AMD, (A2M)
 		case 4: setvect(0x1C, CldsPlayer_update); break; //LOUDNESS
 		case 5: Non_Interrupt_Player = &Cd00Player_update;/*setvect(0x1C, Cd00Player_update);*/ break; //EDlib
+		case 6: setvect(0x1C, CVGM_update); break; //VGM
 	}
 	outportb(0x43, 0x36);
 	outportb(0x40, spd & 0xff00);	//lo-byte
@@ -1633,6 +1642,103 @@ byte Cd00Player_load(char *filename){
 	return true;	
 }
 
+byte CVGMPlayer_load(char *filename){
+	//Header
+		//0x00 nn nn nn nn 	file identification (0x56 0x67 0x6d 0x20) "vgm"
+		//0x04 nn nn nn nn	eof - 0x04
+		//0x14 nn nn nn nn	tags offset - 0x14 (title name...)
+		//0x1C nn nn nn nn 	Loop offset 	
+		//0x20 nn nn nn nn	Loop samples
+		//0x34 nn nn nn nn	data offset - 0x34. if 0x0000000C data at absolute 0x40;
+		//0x50 nn nn nn nn	YM3812 clock. if 0, no opl2 data
+		
+	//Read tags
+	char header[5];
+	long tag_offset = 0;
+	long data_offset = 0;
+	long opl_clock = 0;
+	long size = 0;
+	
+	FILE *f = fopen(filename,"rb"); if(!f) return false;
+	
+	vgm_music_wait = 0;
+	vgm_music_offset = 0;
+	vgm_data_size = 0;
+	vgm_loop = 0;
+	vgm_loop_size = 0;
+	
+	Print_Loading();
+
+	selected_player = 6;
+	opl2_clear();
+	
+	fseek(f, 0, SEEK_SET);
+	//Check vgm
+	fread(header, 1, 4, f);
+	if ((header[0] != 0x56) || (header[1] != 0x67) || (header[2] != 0x6d) || (header[3] != 0x20)){
+		Print_ERROR();fclose(f);return false;
+	}
+	
+	//get absolute file size, absolute tags offset
+	fread(&size, 1, 4, f);
+	size +=4;
+	fseek(f, 0x14, SEEK_SET);
+	fread(&tag_offset, 1, 4, f);
+	tag_offset += 0x14;
+	
+	//get loop start loop length.
+	fseek(f, 0x1C, SEEK_SET);
+	fread(&vgm_loop, 1, 2, f);
+	fseek(f, 2, SEEK_CUR);
+	fread(&vgm_loop_size, 1, 2, f);
+	
+	//get absolute data offset.
+	fseek(f, 0x34, SEEK_SET);
+	fread(&data_offset, 1, 4, f);
+	data_offset+=0x34;
+	
+	//calculate data size
+	size -= data_offset;
+	if (tag_offset != 0) size -= (size - tag_offset);
+	if (size > 65535) {Print_ERROR();fclose(f);return false;}
+
+	vgm_data_size = size;
+
+	//Is is an opl2 vgm? (YM3812 clock != 0?)
+	fseek(f, 0x50, SEEK_SET);
+	fread(&opl_clock, 1, 4, f);
+	if (!opl_clock) {Print_ERROR();fclose(f);return false;}
+	
+	//Read data to ADPLUG_music_data
+	fseek(f, data_offset, SEEK_SET);
+	fread(ADPLUG_music_data, 1, vgm_data_size, f);
+	
+	//read tags
+	if (tag_offset){
+		unsigned char i = 0;
+		unsigned char byte = 1;
+		unsigned char title[28];
+		unsigned char author[26];
+		fseek(f, tag_offset+4+4+4, SEEK_SET);
+		//Get strings; (end in \0):
+		//track, game, system, author. (duplicated (eng\0jap\0):
+		//Year, converter
+		while (byte !='\0'){//get track eng
+			byte = fgetc(f);
+			if (i <28) title[i++] = byte;
+			fgetc(f);//skip byte
+		} 
+		Print_Loaded("VGM (YM3812) PC/ARCADE",title," ");
+	
+	} else Print_Loaded("VGM (YM3812) PC/ARCADE",filename," ");
+
+	fclose(f);
+	
+	Music_Add_Interrupt(160);
+	
+	return true;
+}
+
 byte CheradPlayer_load(char *filename){
 	word i,size,offset;
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
@@ -1714,6 +1820,7 @@ void Load_Music(char *filename){
 	else if (!file_extension(filename,"AMD")) {MOD_PCM = 0; CamdPlayer_load(filename);}
 	else if (!file_extension(filename,"LDS")) CldsPlayer_load(filename);
 	else if (!file_extension(filename,"D00")) Cd00Player_load(filename);
+	else if (!file_extension(filename,"VGM")) CVGMPlayer_load(filename);
 	else if (!file_extension(filename,"SDB")) CheradPlayer_load(filename);
 	else {
 		gotoxy(59,25);
@@ -1775,7 +1882,7 @@ void Init(){
 
 void Exit_Dos(){
 	int i;
-	
+
 	sb_deinit();
 	
 	Music_Remove_Interrupt();
@@ -3258,6 +3365,105 @@ readseq:	// process sequence (pattern)
 	return ;//!songend;
 }
 
+
+//VGM Player
+void interrupt CVGM_update(void){
+	asm CLI
+	while (!vgm_music_wait){
+		byte command,reg,val,byte3,data_type;
+		long data_size;
+		command = ADPLUG_music_data[vgm_music_offset++];
+		switch (command){
+			case 0x5a: //read reg, val
+				reg = ADPLUG_music_data[vgm_music_offset++];
+				val = ADPLUG_music_data[vgm_music_offset++];
+				//cprintf("%02X %02X\n",reg,val);
+			break;
+			case 0x61: //delay
+				vgm_music_offset++;
+				vgm_music_wait = (word) ADPLUG_music_data[vgm_music_offset++]; //delay
+				//vgm_music_wait /=256;
+			break;
+			case 0x62: //delay
+				vgm_music_wait = 735/256;
+			break;
+			case 0x63: //delay
+				vgm_music_wait = 882/256;
+			break;
+			case 0x66: //end
+				vgm_music_wait = 0;
+				vgm_music_offset = 0;
+			break;
+			case 0x67: //data block. pcm sample?
+				//tt ss ss ss ss (data)
+				data_type = ADPLUG_music_data[vgm_music_offset++]; //data type (I will only play 8 bit unsigned pcm)
+				data_size = ADPLUG_music_data[vgm_music_offset+=4]; //data size to read 
+				vgm_music_offset+=data_size;//jump data block (for the moment)
+			break;
+			case 0x90:
+			case 0x91:
+			case 0x92:
+			case 0x93:
+			case 0x94:
+			case 0x95: //nothing yet, (PCM play)
+			break;
+			case 0xAA: //nothing (dual chip)
+			break;
+			default:
+				//Short delay commands, too short to be used in pc xt
+				if (command > 0x76) vgm_music_wait = 1;//Looks like this fixes most songs
+				/*if (command >= 0x70 && command <= 0x7F){
+					vgm_music_wait = (command & 0x0F) + 1;
+				}
+				//if (vgm_music_wait && (vgm_music_wait < 40)) vgm_music_wait = 0; // skip too short pauses
+				//Other skip commands
+				switch(command & 0xF0){
+					case 0x30:
+						vgm_music_offset+=1;
+					break;
+					case 0x40:
+					case 0x50:
+					case 0xA0:
+					case 0xB0:
+						vgm_music_offset+=2;
+					break;
+					case 0xC0:
+					case 0xD0:
+						vgm_music_offset+=3;
+					break;
+					case 0xE0:
+					case 0xF0:
+						vgm_music_offset+=4;
+					break;
+				}
+				*/
+			break;
+		}
+		opl2_write(reg, val);
+		//Detect key hits
+		switch (reg){
+			case 0xB0:
+			case 0xB1:
+			case 0xB2:
+			case 0xB3:
+			case 0xB4:
+			case 0xB5:
+			case 0xB6:
+			case 0xB7:
+			case 0xB8: 
+				Key_Hit[reg - 0xB0] = 1;
+			break;
+		}
+		//if (vgm_music_offset > vgm_data_size) {vgm_music_offset = 0; vgm_music_wait = 0;}
+	}
+	vgm_music_wait--;
+	
+	asm mov al,020h
+	asm mov dx,020h
+	asm out dx, al	//PIC, EOI
+	asm STI //enable interrupts
+	
+}
 
 //HERAD PLAYER
 void CheradPlayer_rewind(int subsong){
