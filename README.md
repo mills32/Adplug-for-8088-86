@@ -90,7 +90,7 @@ Formatos soportados:
 - VGM: Solamente grabaciones del chip 3812 (Encuentra más en vgmrips.com).
 
   Este formato tiene pequeños desajustes en la velocidad de reproducción, ya que los archivos VGM necesitan reproducirse a 44100Hz,
-  cosa que es imposible en estos PCwhich can't be achieved on old PC.
+  cosa que es imposible en estos PC.
 
 - D00: Edlib Tracker, el tracker más complejo creado para Adlib.
 
