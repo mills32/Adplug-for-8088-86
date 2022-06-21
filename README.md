@@ -82,7 +82,7 @@ Formatos soportados:
 - RAD: Reality Adlib Tracker - funcionando 100% (Pequeños bugs causados por mi código).
 
   RAS: los datos de los canales 0 y 1 son utilizados para enviar instrucciones a una Sound Blaster, 
-  para que reproduzca sonidos PCM para percusión.
+  para que reproduzca sonidos PCM para percusión. No utilizar con Adlib.
 
 - SA2: Surprise! Adlib Tracker 2 - algunas canciones se reproducen a la velocidad incorrecta.
 - AMD: Amusic Tracker - pequeños bugs.
