@@ -24,6 +24,7 @@ Requirements:
 - RAM 256 Kb
 - GRAPHICS MDA / Hercules / CGA / Tandy / MCGA / EGA / VGA
 - SOUND Adlib or compatible (Sound Blaster, opl2lpt)
+- SOUND TANDY 3 voices + noise
 
 Some formats will play slow on 8088 4.77 Mhz, code can be optimized.
 Some formats are buggy. 
@@ -40,7 +41,7 @@ Supported formats:
 - SA2: Surprise! Adlib Tracker 2 - Some files play at the wrong speed.
 - AMD: Amusic Tracker - minor bugs.
 - LDS: Loudness Sound System Tracker, the best tracker for adlib - working 100%.
-- VGM: Only 3812 recordings (Find more at vgmrips.com)
+- VGM: YM3812 and compatible chips recordings (YM3526, Y8950), SN76489 (Tandy, SMS, Game Gear). Find more at vgmrips.com.
 
   VGM files need 44100Hz playback rate, which can't be achieved on old PC, so timming might be a bit off in many songs
 
@@ -76,6 +77,7 @@ Requisitos:
 - RAM 256 Kb
 - GRAFICOS MDA / Hercules / CGA / Tandy / MCGA / EGA / VGA
 - SONIDO Adlib o compatible (Sound Blaster, opl2lpt)
+- SONIDO TANDY 3 canales + ruido
 
 Algunos formnatos funcionan lentos en 8088 4.77 Mhz, el código puede ser optimizado.
 Algunos formatos tienen problemas.
@@ -94,7 +96,7 @@ Formatos soportados:
 - SA2: Surprise! Adlib Tracker 2 - algunas canciones se reproducen a la velocidad incorrecta.
 - AMD: Amusic Tracker - pequeños bugs.
 - LDS: Loudness Sound System Tracker, el mejor tracker para Adlib - funcionando 100% (Pequeños bugs causados por mi código).
-- VGM: Solamente grabaciones del chip 3812 (Encuentra más en vgmrips.com).
+- VGM: YM3812 y compatibles (YM3526, Y8950), SN76489 (Tandy, SMS, Game Gear). Encuentra VGMs en vgmrips.com.
 
   Este formato tiene pequeños desajustes en la velocidad de reproducción, ya que los archivos VGM necesitan reproducirse a 44100Hz,
   cosa que es imposible en estos PC.
