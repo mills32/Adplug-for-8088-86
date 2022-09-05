@@ -56,6 +56,7 @@ byte GRAPHICS_CARD = 2;
 //opl2lpt = 378, 379 y 37A
 int ADLIB_PORT = 0;//0x388;
 byte OPL2LPT = 0;
+int Sound_Blaster = 0;
 
 //Visualizer bars colors
 byte VBar_Colors[] = {
@@ -114,10 +115,6 @@ word nfiles = 0;
 word text_pos = 0;
 word screen_pos = 0;
 
-byte GUI_MAP_CHAR[];
-byte GUI_MAP_COL[];
-byte GUI_MAP_CHAR_CGA[];
-byte GUI_MAP_COL_CGA[];
 byte file_number = 2;
 byte pos_number = 0;
 word selected_cell = 0;
@@ -141,13 +138,22 @@ byte Read_Dir();
 void Print_Dir(byte pos);
 void Display_Bars();
 
+void Set_Cell_H(byte val){ //for tandy, set cell height to 8 pixels
+	val = val -1;
+	asm mov dx,03D4h
+	asm mov al,0x09		//Select Max scan Line register
+	asm out dx,al
+	asm mov dx,03D5h
+	asm mov al,val
+	asm out dx,al
+} 
+
 void test();
 
 void main(){
 	//byte load;
 	int i;
 	Setup();
-	Clearkb();
 	Init();
 	Set_Map();
 	Read_Dir();
@@ -200,7 +206,6 @@ void Setup(){
 		regs.h.bl=0x10;
 		int86(0x10, &regs, &regs);
 		if (regs.h.bh == 0) {
-			printf("\nCard detected: EGA");
 			GRAPHICS_CARD = 2;
 			Color_Selected = GREEN << 4 | WHITE;
 			Color_Not_Selected = BLUE << 4 | WHITE;
@@ -213,7 +218,6 @@ void Setup(){
 			regs.h.bl=0x00;
 			int86(0x10, &regs, &regs);
 			if (regs.h.al == 0x07) {
-				printf("\nCard detected: MDA or Hercules");
 				GRAPHICS_CARD = 1;
 				Color_Selected = 0x78;
 				Color_Not_Selected = 0x10;
@@ -223,7 +227,6 @@ void Setup(){
 				Color_Error = 0x10;
 				for (i = 1; i < 7; i++) VBar_Colors[i] = 0x10;
 			} else {
-				printf("\nCard detected: CGA, MCGA or TANDY");
 				GRAPHICS_CARD = 2;
 				Color_Selected = GREEN << 4 | WHITE;
 				Color_Not_Selected = BLUE << 4 | WHITE;
@@ -234,9 +237,10 @@ void Setup(){
 			}
 		}
 	}	
-	sleep(1);
-	system("cls");	
+	system("cls");
+	
 	Clearkb();
+	if (GRAPHICS_CARD == 2) Set_Cell_H(8);
 	if (GRAPHICS_CARD == 3) Set_Tiles("Font_BIZ.png");//Before adding interrupt timer
 	printf("\n\n\n\n\n\n");
 	printf("                           SELECT PORT FOR OPL2 SOUND\n\n");
@@ -256,6 +260,17 @@ void Setup(){
 	else if (key == 4) {OPL2LPT = 1; ADLIB_PORT = PARALEL1[0];}
 	else if (key == 5) {OPL2LPT = 1; ADLIB_PORT = PARALEL2[0];}
 	else ADLIB_PORT = 0x388;
+	printf("\n\n\n\n\n\n\n\n\n");
+	printf("                           SOUND BLASTER DRUMS?   Y/N\n\n");      
+	printf("                        Do not use with ADLIB, default = N\n");
+	while(!kbhit());
+	key = getch();
+	if ((key == 89) || (key == 121))Sound_Blaster = 1;
+	if ((key == 78) || (key == 110))Sound_Blaster = 0;
+	system("cls");	
+	Clearkb();
+	//asm mov ax, 1h
+	//asm int 10h
 }
 
 //VISUALIZER
@@ -263,12 +278,12 @@ void Get_Volume();
 void Display_Bars(){
 	if (v_timer == 2){
 	int i,j;
-	int map_pos = (160*7)+95;
+	int map_pos = (160*8)+91;
 	int col_pos = 0;
 	byte col = 0;
 	Get_Volume();
-	for (i = 0; i < 9; i++){
-		for (j = 8; j > 0; j--){
+	for (i = 0; i < 11; i++){
+		for (j = 7; j > 0; j--){
 			if (C_Volume[i]>>3 == j) { col = 1; XGA_TEXT_MAP[map_pos+col_pos] = VBar_Colors[j];}
 			else if (!col) XGA_TEXT_MAP[map_pos+col_pos] = 0;
 			if (col) XGA_TEXT_MAP[map_pos+col_pos] = VBar_Colors[j];
@@ -412,255 +427,40 @@ void Control_Menu(){
 //menu 80x25 text mode
 void Set_Map(){
 	int i = 0;
-	int j = 0;
-	byte color, character;
+	byte color,character,bkg;
+	FILE *MAP;
 	
-	if (GRAPHICS_CARD == 3){
-		for (i = 0;i <(80*25*2);i+=2){
-			//Set Character Map 
-			character = GUI_MAP_CHAR[j];
-			switch (character){
-				case '_': character = 198;break;
-				case '-': character = 195;break;
-				case '(': character = 197;break;
-				case ')': character = 199;break;
-				case '[': character = 190;break;
-				case ']': character = 191;break;
-				case '$': character = 192;break;
-				case '%': character = 193;break;
-				case '?': character = 194;break;
-				case '*': character = 196;break;
-				case '.': character = 32;break;
-				case '!': character = 200;break;
-				case '{': character = 201;break;
-				//BUBBLES
-				case '#': character = 216;break;
-				case '3': character = 217;break;
-				case '4': character = 218;break;
-				case '5': character = 219;break;
-				case '7': character = 220;break;
-				case 'a': character = 221;break;
-				case '<': character = 222;break;
-				case '>': character = 223;break;
-			}
-			XGA_TEXT_MAP[i] = character;
-			//Set Color Map 
-			color = GUI_MAP_COL[j];
-			switch (color){
-				case '0': color = BLACK << 4 | BLACK;break;
-				case '1': color = RED << 4 | WHITE;break;
-				case '2': color = BLUE << 4 | WHITE;break;
-				case '3': color = CYAN << 4 | WHITE;break;
-				case '4': color = MAGENTA << 4 | WHITE;break;
-				case '5': color = GREEN << 4 | LIGHTGREEN;break;
-				case '6': color = GREEN << 4 | WHITE;break;
-				case '7': color = BLACK << 4 | RED;break;
-				case '.': color = BLACK << 4 | LIGHTBLUE;break;
-				case '=': color = BLACK << 4 | WHITE;break;
-				case '#': color = BLUE << 4 | BLACK;break;
-			}
-			XGA_TEXT_MAP[i+1] = color; 
-			j++;
-		}
-		//Place adlib logo arRanging tiles at 6y+72x
-		character = 202;//Adlib logo
-		for (i = 4;i < 7;i++){
-			for (j = 144; j < 150; j+=2){
-				XGA_TEXT_MAP[(i*160)+j] = character++;
-			}
-		}
-		for (j = 142; j < 152; j+=2) XGA_TEXT_MAP[(7*160)+j] = character++;
-	} 
-	if (GRAPHICS_CARD == 2){
-		for (i = 0;i <(80*25*2);i+=2){
-			//Set Character Map 
-			character = GUI_MAP_CHAR_CGA[j];
-			switch (character){
-				case '+': character = 205;break;
-				case '(': character = 201;break;
-				case ')': character = 187;break;
-				case '!': character = 186;break;
-				case '?': character = 200;break;
-				case '*': character = 188;break;
-				case '.': character = 219;break;
-				case '[': character = 223;break;
-				case '{': character = 177;break;
-			}
-			XGA_TEXT_MAP[i] = character;
-			//Set Color Map 
-			color = GUI_MAP_COL_CGA[j];
-			switch (color){
-				case '0': color = BLACK << 4 | BLACK;break;
-				case '1': color = RED << 4 | WHITE;break;
-				case '2': color = BLUE << 4 | WHITE;break;
-				case '3': color = CYAN << 4 | WHITE;break;
-				case '4': color = MAGENTA << 4 | WHITE;break;
-				case '5': color = GREEN << 4 | LIGHTGREEN;break;
-				case '6': color = BLACK << 4 | WHITE;break;
-				case '.': color = BLACK << 4 | DARKGRAY;break;
-				case '#': color = BLUE << 4 | BLACK;break;
-			}
-			XGA_TEXT_MAP[i+1] = color; 
-			j++;
-		}
+	if (GRAPHICS_CARD == 3) {
+		MAP = fopen("VGA_MAP.bin","rb");
+		if (!MAP) {printf("\nCan't find VGA_MAP.bin\n"); sleep(1); Exit_Dos();}
+		fread(XGA_TEXT_MAP,2,80*25,MAP);
 	}
-	if (GRAPHICS_CARD == 1){
+	if (GRAPHICS_CARD == 2) {//CGA/TANDY
+		MAP = fopen("CGA_MAP.bin","rb");
+		if (!MAP) {printf("\nCan't find CGA_MAP.bin\n"); sleep(1); Exit_Dos();}
+		fread(XGA_TEXT_MAP,2,80*25,MAP);
+	}
+	if (GRAPHICS_CARD == 1) {//MDA
 		XGA_TEXT_MAP = MDA_TEXT_MAP;
+		MAP = fopen("CGA_MAP.bin","rb");
+		if (!MAP) {printf("\nCan't find CGA_MAP.bin\n"); sleep(1); Exit_Dos();}
+		fread(XGA_TEXT_MAP,2,80*25,MAP);
 		for (i = 0;i <(80*25*2);i+=2){
-			//Set Character Map 
-			character = GUI_MAP_CHAR_CGA[j];
-			switch (character){
-				case '+': character = 205;break;
-				case '(': character = 201;break;
-				case ')': character = 187;break;
-				case '!': character = 186;break;
-				case '?': character = 200;break;
-				case '*': character = 188;break;
-				case '.': character = 177;break;
-				case '[': character = 223;break;
-				case '{': character = 177;break;
-			}
+			character = XGA_TEXT_MAP[i];
+			if ((character == 221) || (character == 222)) character = 219;
 			XGA_TEXT_MAP[i] = character;
-			//Set Color Map 
-			//Bits 0-2: 0 => no underline.
-			//Bit 3: 0, low intensity.
-			//Bit 7: 1 Blink, 0 no blink
-			//0x70, inverted
-			color = GUI_MAP_COL_CGA[j];
-			switch (color){
-				case '0': color = 0x0;break;
-				case '1': color = 0x10;break;
-				case '2': color = 0x10;break;
-				case '3': color = 0x70; break;
-				case '4': color = 0x10;break;
-				case '5': color = 0x78;break;
-				case '6': color = 0x10;break;
-				case '.': color = 0x10;break;
-				case '#': color = 0;break;
-			}
-			XGA_TEXT_MAP[i+1] = color; 
-			if (i > ((80*25*2)-320)) XGA_TEXT_MAP[i+1] = 1; 
-			j++;
+			//MDA Attribute:
+			color = XGA_TEXT_MAP[i+1];
+			bkg = color >> 4;
+			//Bits 0-2: 0 => no underline. //Bit 3 = 1, High intensity.
+			if ( (color == 0x2f) || (character == 219) 
+			|| (character == 220) || (character == 223)
+			|| (bkg == 4)         || (bkg == 5)       ) color = 0x78;//If borders, titles etc
+			else color = 0x10; //Normal
+			XGA_TEXT_MAP[i+1] = color;
 		}
 	}
 }
-
-byte GUI_MAP_CHAR[] = {"\
-.(____________________________________________________________________________).\
-.[              ADPLAY for 8088/86 & 286     Not Copyrighted  2021            ].\
-.?----------------------------------------------------------------------------*.\
-<>.............................................................<>...............\
-...........(___________)......................................................<>\
-.......(___$SELECT FILE%___).................(___________________)..............\
-.......[                   ].....#34.......(_$CHANNEL  VISUALIZER%_)............\
-.......[                   ].....57a.......[{{{{{{{{{{{{{{{{{{{{{{{]............\
-.......[                   ].........<>....[{{{{{{{{{{{{{{{{{{{{{{{]............\
-.......[                   ]...............[{{{{{{{{{{{{{{{{{{{{{{{]............\
-34.....[                   ]..............#[{{{{{{{{{{{{{{{{{{{{{{{]............\
-7a.....[                   ]..............5[{{{{{{{{{{{{{{{{{{{{{{{]............\
-.......[                   ]...............[{{{{{{{{{{{{{{{{{{{{{{{]............\
-.......[                   ]<>.............[{{{{{{{{{{{{{{{{{{{{{{{]....#34.....\
-.......[                   ]..........#34..[{{{{{{{{{{{{{{{{{{{{{{{]....57a.....\
-.......[                   ]..........57a..?-----------------------*............\
-.......[                   ].....................(___________).................<\
-.......[                   ].........(___________$MUSIC  INFO%___________)......\
-.......[                   ].........[FORMAT:                            ]......\
-.......[                   ]34.......[NAME:                              ]......\
-.......[                   ]7a.......[AUTHOR:                            ]......\
-.......[                   ].........?-----------------------------------*......\
-.......?-------------------*......................................<>............\
-#34..............................<>............................................#\
-!! EXIT: ESC !! SELECT: ENTER !! VIS: F1 !! STOP: SPACE !!                    !!\
-"                     
-};
-
-byte GUI_MAP_COL[] = {"\
-.==============================================================================.\
-.=4444444444444444444444444444444444444444444444444444444444444444444444444444=.\
-.==============================================================================.\
-................................................................................\
-...........=============...............................................777777...\
-.......=====33333333333=====...............=========================...777777...\
-.......=2222222222222222222=...............===3333333333333333333===...777777...\
-.......=2222222222222222222=...............=00000000000000000000000=...======...\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=00000000000000000000000=............\
-.......=2222222222222222222=...............=========================............\
-.......=2222222222222222222=.....................=============..................\
-.......=2222222222222222222=.........=============33333333333=============......\
-.......=2222222222222222222=.........=22222222222222222222222222222222222=......\
-.......=2222222222222222222=.........=22222222222222222222222222222222222=......\
-.......=2222222222222222222=.........=22222222222222222222222222222222222=......\
-.......=2222222222222222222=.........=====================================......\
-.......=====================....................................................\
-................................................................................\
-66111111222226611111111222222266111112222661111112222222661111111111111111111166\
-"
-};
-
-byte GUI_MAP_CHAR_CGA[] = {"\
-.(++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++).\
-.!              ADPLAY for 8088/86 & 286  -  Not Copyrighted  2021            !.\
-.?++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.\
-................................................................................\
-................................................................................\
-.......     SELECT FILE     ....................................................\
-.......!                   !...............   CHANNEL  VISUALIZER   ............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............!{{{{{{{{{{{{{{{{{{{{{{{!............\
-.......!                   !...............?+++++++++++++++++++++++*............\
-.......!                   !....................................................\
-.......!                   !.........             MUSIC  INFO             ......\
-.......!                   !.........!FORMAT:                            !......\
-.......!                   !.........!NAME:                              !......\
-.......!                   !.........!AUTHOR:                            !......\
-.......?+++++++++++++++++++*.........?+++++++++++++++++++++++++++++++++++*......\
-................................................................................\
-................................................................................\
-[[ EXIT: ESC [[ SELECT: ENTER [[ VIS: F1 [[ STOP: SPACE [[                    [[\
-"                     
-};
-
-byte GUI_MAP_COL_CGA[] = {"\
-.444444444444444444444444444444444444444444444444444444444444444444444444444444.\
-.444444444444444444444444444444444444444444444444444444444444444444444444444444#\
-.444444444444444444444444444444444444444444444444444444444444444444444444444444#\
-..##############################################################################\
-................................................................................\
-.......333333333333333333333....................................................\
-.......222222222222222222222#..............3333333333333333333333333............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6000000000000000000000006............\
-.......222222222222222222222#..............6666666666666666666666666............\
-.......222222222222222222222#...................................................\
-.......222222222222222222222#........3333333333333333333333333333333333333......\
-.......222222222222222222222#........2222222222222222222222222222222222222#.....\
-.......222222222222222222222#........2222222222222222222222222222222222222#.....\
-.......222222222222222222222#........2222222222222222222222222222222222222#.....\
-.......222222222222222222222#........2222222222222222222222222222222222222#.....\
-........#####################.........#####################################.....\
-................................................................................\
-55111111222225511111111222222255111112222551111112222222551111111111111111111155\
-"
-};
-
 
 // @iport - index port, @iport + 1 - data port
 void vga_write_reg(word iport, byte reg, byte val){
