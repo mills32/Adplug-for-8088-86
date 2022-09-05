@@ -25,7 +25,7 @@
 #define DMA_CHANNEL_1 0x83
 #define DMA_CHANNEL_3 0x82
 
-/* macro to write a word to a port */
+/* macro to write a word to a port  */
 #define word_out(port,register,value) \
   outport(port,(((word)value<<8) + register))
 
