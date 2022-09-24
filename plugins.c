@@ -25,7 +25,7 @@
 #define DMA_CHANNEL_1 0x83
 #define DMA_CHANNEL_3 0x82
 
-/* macro to write a word to a port  */
+/* macro to write a word to a port */
 #define word_out(port,register,value) \
   outport(port,(((word)value<<8) + register))
 
@@ -422,6 +422,15 @@ void Detect_Key_Hit(byte reg,byte val){
 	}
 }
 
+void Detect_Key_Hit_Tandy(byte val){
+	val &= 0x70;
+	if (val == 0x10) Key_Hit[0] = 1;
+	if (val == 0x30) Key_Hit[1] = 1;
+	if (val == 0x50) Key_Hit[2] = 1;
+	if (val == 0x70) Key_Hit[3] = 1;
+}
+
+
 void Print_Loading(){
 	gotoxy(60,25); 
 	textattr(Color_Loading);
@@ -465,7 +474,7 @@ void opl2_write0(unsigned char reg, unsigned char data){
 	asm out dx, al
 	
 	//Wait at least 3.3 microseconds
-	asm mov cx,6
+	asm mov cx,16
 	wait:
 		asm in ax,dx
 		asm loop wait	//for (i = 0; i < 6; i++) inp(lpt_ctrl);
@@ -475,7 +484,10 @@ void opl2_write0(unsigned char reg, unsigned char data){
 	asm out dx, al
 	
 	// Wait at least 23 microseconds
-    //for (i = 0; i < 35; i++) inp(lpt_ctrl);
+    /*asm mov cx,23
+	wait2:
+		asm in ax,dx
+		asm loop wait2*///for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
 
 void opl2lpt_write(unsigned char reg, unsigned char data) {  
@@ -589,6 +601,7 @@ void tandy_write(unsigned char data){
 	asm mov dx, TANDY_PORT
 	asm mov al, data
 	asm out dx, al
+	
 }
 
 void tandy_clear(){
@@ -3421,10 +3434,10 @@ void interrupt CVGM_update(void){
 				//printf("%i\n",vgm_music_wait);
 			break;
 			case 0x62: //delay
-				vgm_music_wait = 735 / 40;
+				vgm_music_wait = 18;//735 / 40
 			break;
 			case 0x63: //delay
-				vgm_music_wait = 882 / 40;
+				vgm_music_wait = 22;//882 / 40;
 			break;
 			case 0x66: //end
 				vgm_music_wait = 0;
@@ -3450,8 +3463,9 @@ void interrupt CVGM_update(void){
 				if (command >= 0x70 && command <= 0x7F){
 					vgm_music_wait = (command & 0x0F) / 40;
 				}
-				/*
-				//if (vgm_music_wait && (vgm_music_wait < 40)) vgm_music_wait = 0; // skip too short pauses
+				
+				/*if (vgm_chip == 4){
+				if (vgm_music_wait && (vgm_music_wait < 40)) vgm_music_wait = 0; // skip too short pauses
 				//Other skip commands
 				switch(command & 0xF0){
 					case 0x30:
@@ -3472,7 +3486,7 @@ void interrupt CVGM_update(void){
 						vgm_music_offset+=4;
 					break;
 				}
-				*/
+				}*/
 			break;
 		}
 		if (vgm_chip !=4){
@@ -3481,6 +3495,7 @@ void interrupt CVGM_update(void){
 			Detect_Key_Hit(reg,val);
 		} else {
 			tandy_write(val);
+			Detect_Key_Hit_Tandy(val);
 		}
 		if (vgm_music_offset > 65535) {vgm_music_offset = 0; vgm_music_array++;}
 		if (vgm_music_array > ram_size) vgm_music_array = 0;
