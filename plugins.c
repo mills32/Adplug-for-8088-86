@@ -3411,6 +3411,10 @@ readseq:	// process sequence (pattern)
 //VGM Player
 void interrupt CVGM_update(void){
 	unsigned char *music_data = VGM_data[vgm_music_array];
+	unsigned char tandy_key = 0;
+	int delay1 = 735 / 40;
+	int delay2 = 882 / 40;
+	unsigned char div = 40;
 	asm CLI
 	while (!vgm_music_wait){
 		byte command,reg,val,byte3,data_type;
@@ -3434,10 +3438,10 @@ void interrupt CVGM_update(void){
 				//printf("%i\n",vgm_music_wait);
 			break;
 			case 0x62: //delay
-				vgm_music_wait = 18;//735 / 40
+				vgm_music_wait = delay1;
 			break;
 			case 0x63: //delay
-				vgm_music_wait = 22;//882 / 40;
+				vgm_music_wait = delay2;
 			break;
 			case 0x66: //end
 				vgm_music_wait = 0;
@@ -3461,7 +3465,7 @@ void interrupt CVGM_update(void){
 			default:
 				//Short delay commands, too short to be used in pc xt
 				if (command >= 0x70 && command <= 0x7F){
-					vgm_music_wait = (command & 0x0F) / 40;
+					vgm_music_wait = (command & 0x0F) / div;
 				}
 				
 				/*if (vgm_chip == 4){
