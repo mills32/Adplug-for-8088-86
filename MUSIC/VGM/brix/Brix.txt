@@ -1,0 +1,37 @@
+***********************************************
+* VGM music package                           *
+* http://vgmrips.net/                         *
+***********************************************
+Game name:           Brix
+System:              IBM PC/AT
+OS:                  DOS
+Music hardware:      Adlib/OPL2
+                     (YM3812)
+
+Music author:        Dan Froelich
+Game developer:      MicroLeague Interactive 
+                     Software
+Game publisher:      Epic MegaGames UK Ltd
+Game release date:   1992
+
+Package created by:  Mills
+Package version:     1.01
+
+Song list, in approximate game order:
+Song name                           Length:
+                                    Total  Loop
+01 BGM 1                            2:04   -
+02 BGM 2                            1:57   -
+03 BGM 3                            2:05   -
+
+Total Length                        6:06   -
+
+
+Notes:
+-
+
+
+Package history:
+1.00 2022-09-22 Mills: Initial release.
+1.01 2022-09-23 Mills: Fixed GD3 tags.
+1.02 2022-09-24 Mills: Fixed txt and BGM 3
