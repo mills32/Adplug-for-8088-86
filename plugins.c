@@ -353,7 +353,7 @@ unsigned char *filedata;
 
 //VGM
 unsigned char **VGM_data;
-word vgm_music_wait = 0;
+int vgm_music_wait = 0;
 dword vgm_music_offset = 0;
 byte vgm_music_array = 0;
 dword vgm_data_size = 0;
@@ -464,7 +464,6 @@ void Print_ERROR(){
 }
 
 //OPL2
-extern byte OPL2LPT;
 
 void (*opl2_write)(unsigned char, unsigned char);
 
@@ -485,27 +484,10 @@ void opl2_write0(unsigned char reg, unsigned char data){
 	asm out dx, al
 	
 	// Wait at least 23 microseconds
-	asm mov cx,23
+    /*asm mov cx,23
 	wait2:
 		asm in ax,dx
-		asm loop wait2//for (i = 0; i < 35; i++) inp(lpt_ctrl);
-}
-
-void opl2_write0_VGM(unsigned char reg, unsigned char data){
-	asm mov ah,0
-	asm mov dx, ADLIB_PORT
-	asm mov al, reg
-	asm out dx, al
-	
-	//Wait at least 3.3 microseconds
-	asm mov cx,16
-	wait:
-		asm in ax,dx
-		asm loop wait	//for (i = 0; i < 6; i++) inp(lpt_ctrl);
-	
-	asm inc dx
-	asm mov al, data
-	asm out dx, al
+		asm loop wait2*///for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
 
 void opl2lpt_write(unsigned char reg, unsigned char data) {  
@@ -542,44 +524,7 @@ void opl2lpt_write(unsigned char reg, unsigned char data) {
     asm out dx, al	//outp(lpt_ctrl, 12);
 
     // Wait at least 23 microseconds
-	asm mov cx,23
-	wait2:
-		asm in ax,dx
-		asm loop wait2
-}
-
-void opl2lpt_write_VGM(unsigned char reg, unsigned char data) {  
-	// Select OPL2 register
-	asm mov dx, ADLIB_PORT	
-	asm mov al, reg
-	asm out dx, al	//outp(ADLIB_PORT, reg);
-	
-	asm add dx, 2	//ADLIB_PORT+2 (lpt_ctrl)
-    asm mov al, 13
-	asm out dx, al	//outp(lpt_ctrl, 13);
-	asm mov al, 9
-	asm out dx, al	//outp(lpt_ctrl, 9);
-	asm mov al, 13
-    asm out dx, al	//outp(lpt_ctrl, 13);
-
-    //Wait at least 3.3 microseconds
-	asm mov cx,6
-	wait:
-		asm in ax,dx
-		asm loop wait	//for (i = 0; i < 6; i++) inp(lpt_ctrl);
-
-    // Set value
-	asm sub dx, 2	//ADLIB_PORT	
-	asm mov al, data
-	asm out dx, al	//outp(ADLIB_PORT, data);
-    
-	asm add dx, 2	//ADLIB_PORT+2
-    asm mov al, 12
-	asm out dx, al	//outp(lpt_ctrl, 12);
-	asm mov al, 8
-	asm out dx, al	//outp(lpt_ctrl, 8);
-	asm mov al, 12
-    asm out dx, al	//outp(lpt_ctrl, 12);
+    //for (i = 0; i < 35; i++) inp(lpt_ctrl);
 }
 
 void Adlib_Detect(){ 
@@ -650,8 +595,9 @@ void tandy_write(unsigned char data){
 	//DATA:
 		//Bit 7 = enable data transfer 
 		//Bits 6,5,4 = Register number from 0 to 7 
-			//(tone0 frequency, tone0 attenuation, t1 freq, t1 att, t2 freq, t2 att, noise control, noise attenuation)
+			//(tone 0 frequency, tone0 attenuation, t1 freq, t1 att, t2 freq, t2 att, noise control, noise attenuation)
 		//Bits 3,2,1,0 = frequency-control / atenuation value
+	asm mov ah,0
 	asm mov dx, TANDY_PORT
 	asm mov al, data
 	asm out dx, al
@@ -1816,9 +1762,6 @@ byte CVGMPlayer_load(char *filename){
 	Print_Loaded(vgm_format,filename," ");
 	fclose(f);
 	
-	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
-	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
-	
 	Music_Add_Interrupt(1000);
 	
 	return true;
@@ -1901,9 +1844,6 @@ end_section:
 	rate = 500; // 
 
 	Print_Loaded("Dosbox Raw OPL v 2.0",filename,"unknown");
-	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
-	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
-	
 	Music_Add_Interrupt(rate);
 	return true;
 }
@@ -1915,8 +1855,6 @@ end_section:
 //A2M? Sierra?, Lucasarts?
 
 void Load_Music(char *filename){
-	if (OPL2LPT == 1) opl2_write = &opl2lpt_write;
-	if (OPL2LPT == 0) opl2_write = &opl2_write0;
 	//CimfPlayer_load("KICKPANT.IMF");
 	if (!file_extension(filename,"IMF") || !file_extension(filename,"DMF") || !file_extension(filename,"WLF")) CimfPlayer_load(filename);
 	else if (!file_extension(filename,"RAD")) {MOD_PCM = 0; CradPlayer_load(filename);}
@@ -1935,7 +1873,7 @@ void Load_Music(char *filename){
 }
 
 //INIT RAM AND etc
-
+extern byte OPL2LPT;
 void Init(){
 	int i,j;
 	asm CLI
@@ -1972,6 +1910,9 @@ void Init(){
 		for (j = 0; j < 64; j++) d00_MUL64_DIV63[i][j] = (int)i*j/63;
 	}
 	
+	if (OPL2LPT == 1) opl2_write = &opl2lpt_write;
+	if (OPL2LPT == 0) opl2_write = &opl2_write0;
+	
 	VGM_data[0] = ADPLUG_music_data;
 	if (ADPLUG_music_data2) VGM_data[1] = ADPLUG_music_data2;
 	if (ADPLUG_music_data3) VGM_data[2] = ADPLUG_music_data3;
@@ -1979,9 +1920,6 @@ void Init(){
 	
 	
 	Non_Interrupt_Player = &Void_function;
-	
-	if (OPL2LPT == 1) opl2_write = &opl2lpt_write;
-	if (OPL2LPT == 0) opl2_write = &opl2_write0;
 	
 	Adlib_Detect();
 }
@@ -3493,13 +3431,18 @@ void interrupt CVGM_update(void){
 				val = music_data[vgm_music_offset++];
 				//cprintf("%02X %02X\n",reg,val);
 			break;
-			case 0x61: //long delay
-				vgm_music_wait = (word)(music_data[vgm_music_offset] | (music_data[vgm_music_offset + 1] << 8))/div;
+			case 0x61: //delay
+				vgm_music_wait = (music_data[vgm_music_offset] | (music_data[vgm_music_offset + 1] << 8))/40;
 				vgm_music_offset+=2;
+				if (vgm_music_wait < 0) vgm_music_wait *= -2;
 				//printf("%i\n",vgm_music_wait);
 			break;
-			case 0x62: vgm_music_wait = (word) 18; break;
-			case 0x63: vgm_music_wait = (word) 22; break;
+			case 0x62: //delay
+				vgm_music_wait = delay1;
+			break;
+			case 0x63: //delay
+				vgm_music_wait = delay2;
+			break;
 			case 0x66: //end
 				vgm_music_wait = 0;
 				vgm_music_offset = 0;

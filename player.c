@@ -502,7 +502,7 @@ void Set_Tiles(unsigned char *font){
 	unsigned char *data = calloc(1024*4,1);
 	unsigned char *data1 = calloc(1024*4,1);
 	byte n0 = 0;//MCGA font pages
-	byte n1 = 2;
+	byte n1 = 1;
 	FILE *f = fopen(font,"rb");
 	if (!f){free(data);free(data1);return;}
 	fseek(f, 0x43, SEEK_SET);
@@ -527,7 +527,7 @@ void Set_Tiles(unsigned char *font){
 		
 		//Write tiles
 		//Write tiles
-		/*outport(0x3C4,0x0402);
+		outport(0x3C4,0x0402);
 		outport(0x3C4,0x0704);
 		outport(0x3CE,0x0005);
 		outport(0x3CE,0x0406);
@@ -543,9 +543,9 @@ void Set_Tiles(unsigned char *font){
 		outport(0x3C4,0x0304);
 		outport(0x3CE,0x1005);
 		outport(0x3CE,0x0E06);
-		outport(0x3CE,0x0004);*/
-		//vga_write_reg(0x3C4, 0x04, 0x06);
-		//vga_write_reg(0x3Ce, 0x04, 0x02);
+		outport(0x3CE,0x0004);
+		/*vga_write_reg(0x3C4, 0x04, 0x06);
+		vga_write_reg(0x3Ce, 0x04, 0x02);
 		asm{
 			push bp
 			mov	ax,1100h
@@ -560,8 +560,9 @@ void Set_Tiles(unsigned char *font){
 			
 			pop bp
 		}
-		//vga_write_reg(0x3C4, 0x04, 0x03);
-		//vga_write_reg(0x3CE, 0x04, 0x00);
+		vga_write_reg(0x3C4, 0x04, 0x03);
+		vga_write_reg(0x3CE, 0x04, 0x00);*/
+
 	} else {
 		// 1 bit png, each line is stored in 16 bytes + 1 extra at the end
 		for (y = 0; y < 16*(16*17); y+=(16*17)){
@@ -595,21 +596,7 @@ void Set_Tiles(unsigned char *font){
 		asm shl     bl,1		//BL bits 2-3 := n1
 		asm or      bl,n0		//n0 BL bits 0-1 := n0
 		asm int     10h			//load font pages
-
-		/*
-		//Int 10h, 1100h  Load User-Specifed Alpha Font  EGA, MCGA, VGA
-		//Changes font to user-defined font in text mode.
-		asm push bp
-        asm mov AX,1100h
-        asm mov BH,16	//Bytes per character
-        asm mov BL,0	//Font block to load (EGA/MCGA 0..3 | VGA 0..7)
-        asm mov CX,128	//Number of characters
-        asm mov DX,0	//Number of first character
-		asm xor bp,bp
-		//ES:BP	Pointer to character bitmaps
-		asm mov	bp,word ptr[data1]
-		asm int 10h	//Load font
-		asm pop bp*/
+		
 	}
 	
 	free(data);free(data1);

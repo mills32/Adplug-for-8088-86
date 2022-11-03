@@ -1,6 +1,6 @@
 rem required Turbo C installed at C:\TC
 rem compile c files
-tcc -G -Ic:\tc\include -mc -c player.c plugins.c 
+tcc -G -O2 -Ic:\tc\include -mc -c player.c plugins.c 
 rem compile assembly files
 rem tasm /dc lt_sprc.asm
 rem create lib
