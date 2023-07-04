@@ -63,9 +63,7 @@ extern byte Color_Error;
 	//////////
 int ram_size = 0;//
 unsigned char *ADPLUG_music_data;
-unsigned char *ADPLUG_music_data2;
-unsigned char *ADPLUG_music_data3;
-unsigned char *ADPLUG_music_data4;
+unsigned char *ADPLUG_music_data2;//To process VGMs
 
 const unsigned short CPlayer_note_table[12] =
   {363, 385, 408, 432, 458, 485, 514, 544, 577, 611, 647, 686};
@@ -352,15 +350,14 @@ d00channel d00_channel[9];
 unsigned char *filedata;
 
 //VGM
-unsigned char **VGM_data;
 word vgm_music_wait = 0;
-dword vgm_music_offset = 0;
+word vgm_music_offset = 0;
 byte vgm_music_array = 0;
-dword vgm_data_size = 0;
+word vgm_data_size = 0;
 word vgm_loop = 0;
 word vgm_loop_size = 0;
 word vgm_chip = 0; //1 ym3812; 2 ym3526; 3 y8950; 4 SN76489
-
+byte vgm_truncated = 0;
 
 	////////////
 	//FUNCTIOS//
@@ -430,7 +427,6 @@ void Detect_Key_Hit_Tandy(byte val){
 	if (val == 0x70) Key_Hit[3] = 1;
 }
 
-
 void Print_Loading(){
 	gotoxy(60,25); 
 	textattr(Color_Loading);
@@ -453,8 +449,9 @@ void Print_Loaded(char *format, char *name, char *author){
 	gotoxy(47,21); 
 		cprintf("%s",author);
 	gotoxy(60,25); 
-	textattr(Color_Error);
-	cprintf("LOADED            ");
+	textattr(Color_Error);//////
+	if (!vgm_truncated)cprintf("LOADED            ");
+	else cprintf("LOADED (TRUNCATED)");
 }
 
 void Print_ERROR(){
@@ -802,7 +799,7 @@ void sb_setup(){
 
 void (*MOD_PCM_Drums)(byte);
 
-void MOD_PCM_Drums_OFF(byte chan){};
+void MOD_PCM_Drums_OFF(byte chan){chan = 0;};
 
 void MOD_PCM_Drums_ON(byte chan){
 	sb_play_sample(chan,11025);
@@ -926,6 +923,91 @@ void WaitVsync_NOMDA(){
 	asm jz		WaitVsync
 	
 	Non_Interrupt_Player();
+}
+
+void Process_VGM(){
+	//unsigned char *vgm_dat = &LT_tile_tempdata[0];
+	word vgm_p = 0,vgm_p2 = 0;
+	word delay = 0;
+	byte skip = 0;
+	byte dat = 0;
+	byte start_commands = 0;
+	while (vgm_p < vgm_data_size){
+		//
+		dat = ADPLUG_music_data2[vgm_p]; 
+		switch(dat){
+			case 0x50: //read val+reg SN76489
+				if ((vgm_p>1)&&(start_commands)){
+					if (skip){
+						ADPLUG_music_data[vgm_p2] = 0;
+						ADPLUG_music_data[vgm_p2+1] = 0;
+						vgm_p2+=2;
+					} else {
+						ADPLUG_music_data[vgm_p2] = delay&0x00FF;
+						ADPLUG_music_data[vgm_p2+1] = delay>>8;
+						vgm_p2+=2;
+					}
+				}
+				ADPLUG_music_data[vgm_p2] = ADPLUG_music_data2[vgm_p+1]; //reg val
+				ADPLUG_music_data[vgm_p2+1] = 0; 
+				vgm_p+=2;vgm_p2+=2;
+				skip = 1;delay = 0;start_commands = 1;
+			break;
+			case 0x5A: //read reg, val YM3812
+			case 0x5B: //read reg, val YM3526
+			case 0x5C: //read reg, val Y8950
+				if ((vgm_p>1)&&(start_commands)){
+					if (skip){
+						ADPLUG_music_data[vgm_p2] = 0;
+						ADPLUG_music_data[vgm_p2+1] = 0;
+						vgm_p2+=2;
+					} else {
+						ADPLUG_music_data[vgm_p2] = delay&0x00FF;
+						ADPLUG_music_data[vgm_p2+1] = delay>>8;
+						vgm_p2+=2;
+					}
+				}
+				ADPLUG_music_data[vgm_p2] = ADPLUG_music_data2[vgm_p+1]; //reg
+				ADPLUG_music_data[vgm_p2+1] = ADPLUG_music_data2[vgm_p+2]; //val
+				vgm_p+=3;vgm_p2+=2;
+				skip = 1;delay = 0;start_commands = 1;
+			break;
+			case 0x61:
+				if (start_commands) delay += (ADPLUG_music_data2[vgm_p+1] | (ADPLUG_music_data2[vgm_p+2]<<8))/50;
+				vgm_p+=3;
+				skip = 0;
+			break;
+			case 0x62:
+				if (start_commands) delay += 14;//735 / 50
+				vgm_p++;
+				skip = 0;
+			break;
+			case 0x63:
+				if (start_commands) delay += 17;//882 / 50
+				vgm_p++;
+				skip = 0; 
+			break;
+			case 0x66://end
+				if (start_commands){
+					ADPLUG_music_data[vgm_p2] = 0x66;
+					ADPLUG_music_data[vgm_p2+1] = 0x66;
+					vgm_p2+=2;
+					vgm_p = vgm_data_size +1;
+				} else vgm_p++;
+			break;
+			default:
+				if (dat >= 0x70 && dat <= 0x7F){
+					//delay += (dat-0x6F)/50;
+					//skip = 0;
+				}
+				vgm_p++;
+			break;
+		}
+	}
+	vgm_data_size = vgm_p2;
+	vgm_music_offset = 0;
+	vgm_music_wait = 0;
+	vgm_music_array = 0;
 }
 
 byte CimfPlayer_load(char *filename){
@@ -1679,16 +1761,17 @@ byte CVGMPlayer_load(char *filename){
 		//0x50 nn nn nn nn	YM3812 clock. if 0, no opl2 data
 		
 	//Read tags
+	char kk;
 	char header[5];
 	char *vgm_format;
 	char vgm_format0[] = {"VGM LOG - CHIP YM3812 "};
 	char vgm_format1[] = {"VGM LOG - CHIP YM3526 "};
 	char vgm_format2[] = {"VGM LOG - CHIP Y8950  "};
 	char vgm_format3[] = {"VGM LOG - CHIP SN76489"};
-	long tag_offset = 0;
-	long data_offset = 0;
-	long opl_clock = 0;
-	dword size = 0;
+	unsigned long tag_offset = 0;
+	unsigned long data_offset = 0;
+	unsigned long opl_clock = 0;
+	unsigned long size = 0;
 	
 	FILE *f = fopen(filename,"rb"); if(!f) return false;
 	
@@ -1700,6 +1783,7 @@ byte CVGMPlayer_load(char *filename){
 	vgm_loop = 0;
 	vgm_loop_size = 0;
 	vgm_chip = 0; //1 ym3812; 2 ym3526; 3 y8950; 4 SN76489(SMS/Tandy)
+	vgm_truncated = 0;
 	
 	Print_Loading();
 
@@ -1709,80 +1793,61 @@ byte CVGMPlayer_load(char *filename){
 	
 	memset(ADPLUG_music_data,0,65535);
 	memset(ADPLUG_music_data2,0,65535);
-	memset(ADPLUG_music_data3,0,65535);
-	memset(ADPLUG_music_data4,0,65535);
 	
 	fseek(f, 0, SEEK_SET);
 	//Check vgm
-	fread(header, 1, 4, f);
+	fread(header, 4, 1, f);
 	if ((header[0] != 0x56) || (header[1] != 0x67) || (header[2] != 0x6d) || (header[3] != 0x20)){
 		Print_ERROR();fclose(f);return false;
 	}
 	
 	//get absolute file size, absolute tags offset
-	fread(&size, 1, 4, f);
+	fseek(f, 0x04, SEEK_SET);
+	fread(&size, 4, 1, f);
 	size +=4;
 	fseek(f, 0x14, SEEK_SET);
-	fread(&tag_offset, 1, 4, f);
+	fread(&tag_offset, 4, 1, f);
 	if (tag_offset != 0) tag_offset += 0x14;
-	
 	//get loop start loop length.
 	fseek(f, 0x1C, SEEK_SET);
-	fread(&vgm_loop, 1, 2, f);
+	fread(&vgm_loop, 2, 1, f);
 	fseek(f, 2, SEEK_CUR);
-	fread(&vgm_loop_size, 1, 2, f);
+	fread(&vgm_loop_size, 2, 1, f);
 	
 	//get absolute data offset.
 	fseek(f, 0x34, SEEK_SET);
-	fread(&data_offset, 1, 4, f);
+	fread(&data_offset, 4, 1, f);
 	if (!data_offset) data_offset = 0x40;
 	else data_offset+=0x34;
 	
 	//calculate data size
 	size -= data_offset;
+	//printf("%i",data_offset);
 	if (tag_offset != 0) size -= (size - tag_offset);
-	if ((ram_size == 0) && (size > 65535)) {Print_ERROR();fclose(f);return false;}
-	else if ((ram_size == 1) && (size > 131171)) {Print_ERROR();fclose(f);return false;}
-	else if ((ram_size == 2) && (size > 196607)) {Print_ERROR();fclose(f);return false;}
-	else if ((ram_size == 3) && (size > 262143)) {Print_ERROR();fclose(f);return false;}
-	else if ((ram_size == 4) && (size > 327179)) {Print_ERROR();fclose(f);return false;}
-
-	vgm_data_size = size;
+	if (size > 0xFFFB) {vgm_truncated = 1; vgm_data_size = 0xFFFB;}
+	else vgm_data_size = size;
 
 	//What chip is it? vgm_chip 1 ym3812; 2 ym3526; 3 y8950; 4 SN76489
 	fseek(f, 0x50, SEEK_SET);
-	fread(&opl_clock, 1, 4, f);
+	fread(&opl_clock, 4, 1, f);
 	if (opl_clock) {vgm_chip = 1; vgm_format = vgm_format0;} //YM3812
-	fread(&opl_clock, 1, 4, f);
+	fread(&opl_clock, 4, 1, f);
 	if (opl_clock) {vgm_chip = 2; vgm_format = vgm_format1;} //YM3526
-	fread(&opl_clock, 1, 4, f);
+	fread(&opl_clock, 4, 1, f);
 	if (opl_clock) {vgm_chip = 3; vgm_format = vgm_format2;} //Y8950
 	
 	fseek(f, 0x0C, SEEK_SET);
-	fread(&opl_clock, 1, 4, f);
+	fread(&opl_clock, 4, 1, f);
 	if (opl_clock) {vgm_chip = 4; vgm_format = vgm_format3;} //SN76489
 	
 	if (!vgm_chip) {Print_ERROR();fclose(f);return false;}
 	
 	vgm_music_array = 0;
+	//printf("%i %i\n",vgm_data_size,data_offset); 
 	//Read data to ADPLUG_music_data
 	fseek(f, data_offset, SEEK_SET);
-	if (size < 65536 ) fread(ADPLUG_music_data, 1, vgm_data_size, f);
-	else if ((size < 131172) && (ram_size == 1)) {
-		fread(ADPLUG_music_data, 1, 65535, f);
-		fread(ADPLUG_music_data2, 1, 65535, f);
-	}
-	else if ((size < 196608) && (ram_size == 2)){
-		fread(ADPLUG_music_data, 1, 65535, f);
-		fread(ADPLUG_music_data2, 1, 65535, f);
-		fread(ADPLUG_music_data3, 1, 65535, f);
-	}
-	else if ((size < 262144) && (ram_size == 3)){
-		fread(ADPLUG_music_data, 1, 65535, f);
-		fread(ADPLUG_music_data2, 1, 65535, f);
-		fread(ADPLUG_music_data3, 1, 65535, f);
-		fread(ADPLUG_music_data4, 1, 65535, f);
-	}
+	fread(ADPLUG_music_data2,1,vgm_data_size,f);
+	Process_VGM();
 	
 	//read tags
 	/*if (tag_offset){
@@ -1819,7 +1884,7 @@ byte CVGMPlayer_load(char *filename){
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
 	
-	Music_Add_Interrupt(1000);
+	Music_Add_Interrupt(882);
 	
 	return true;
 }
@@ -1952,15 +2017,11 @@ void Init(){
 	//Allocate modules data 185KB
 	tracks = calloc(64*9,5);
 	for (i = 0; i < 64*9; i++) {
-		if ((tracks[i] = calloc(64,5)) == NULL) {printf("Not enough RAM"); exit(1);}
+		if ((tracks[i] = calloc(64,5)) == NULL) {printf("Not enough RAM"); sleep(1); exit(1);}
 	}
 	
-	if ((ADPLUG_music_data  = farcalloc(65535,1)) == NULL) {printf("Not enough RAM"); exit(1);}
-	else if ((ADPLUG_music_data2 = farcalloc(65535,1)) == NULL) {printf("Max file size = 64K "); ram_size = 0;}
-	else if ((ADPLUG_music_data3 = farcalloc(65535,1)) == NULL) {printf("Max file size = 128K"); ram_size = 1;}
-	else if ((ADPLUG_music_data4 = farcalloc(65535,1)) == NULL) {printf("Max file size = 192K"); ram_size = 2;}
-	else {printf("Max file size = 256K"); ram_size = 3;}
-	sleep(1);
+	if ((ADPLUG_music_data  = farcalloc(65535,1)) == NULL) {printf("Not enough RAM"); sleep(1); exit(1);}
+	else if ((ADPLUG_music_data2 = farcalloc(65535,1)) == NULL) {printf("Not enough RAM"); sleep(1); exit(1);}
 	
 	lds_positions = (LDS_Position*) ADPLUG_music_data;
 	lds_channel = (LDS_Channel*) (ADPLUG_music_data + (1024*sizeof(LDS_Position)));
@@ -1971,12 +2032,6 @@ void Init(){
 	for (i = 0; i < 64; i++) {
 		for (j = 0; j < 64; j++) d00_MUL64_DIV63[i][j] = (int)i*j/63;
 	}
-	
-	VGM_data[0] = ADPLUG_music_data;
-	if (ADPLUG_music_data2) VGM_data[1] = ADPLUG_music_data2;
-	if (ADPLUG_music_data3) VGM_data[2] = ADPLUG_music_data3;
-	if (ADPLUG_music_data4) VGM_data[3] = ADPLUG_music_data4;
-	
 	
 	Non_Interrupt_Player = &Void_function;
 	
@@ -1999,11 +2054,8 @@ void Exit_Dos(){
 	free(lds_DIV1216);
 	if (ADPLUG_music_data ) free(ADPLUG_music_data );
 	if (ADPLUG_music_data2) free(ADPLUG_music_data2);
-	if (ADPLUG_music_data3) free(ADPLUG_music_data3);
-	if (ADPLUG_music_data4) free(ADPLUG_music_data4);
+	ADPLUG_music_data = NULL;
 	ADPLUG_music_data2 = NULL;
-	ADPLUG_music_data3 = NULL;
-	ADPLUG_music_data4 = NULL;
 	system("cls");
 	chdir(Initial_working_dir);
 	
@@ -3472,103 +3524,31 @@ readseq:	// process sequence (pattern)
 
 //VGM Player
 void interrupt CVGM_update(void){
-	unsigned char *music_data = VGM_data[vgm_music_array];
-	unsigned char tandy_key = 0;
-	int delay1 = 735 / 40;
-	int delay2 = 882 / 40;
-	unsigned char div = 40;
+	unsigned char val = 0, reg = 0;
 	asm CLI
-	while (!vgm_music_wait){
-		byte command,reg,val,byte3,data_type;
-		long data_size;
-		command = music_data[vgm_music_offset++];
-		switch (command){
-			case 0x50: //read val+reg SN76489
-				val = music_data[vgm_music_offset++];
-			break;
-			case 0x5A: //read reg, val YM3812
-			case 0x5B: //read reg, val YM3526
-			case 0x5C: //read reg, val Y8950
-				reg = music_data[vgm_music_offset++];
-				val = music_data[vgm_music_offset++];
-				//cprintf("%02X %02X\n",reg,val);
-			break;
-			case 0x61: //long delay
-				vgm_music_wait = (word)(music_data[vgm_music_offset] | (music_data[vgm_music_offset + 1] << 8))/div;
-				vgm_music_offset+=2;
-				//printf("%i\n",vgm_music_wait);
-			break;
-			case 0x62: vgm_music_wait = (word) 18; break;
-			case 0x63: vgm_music_wait = (word) 22; break;
-			case 0x66: //end
-				vgm_music_wait = 0;
-				vgm_music_offset = 0;
-			break;
-			case 0x67: //data block. pcm sample?
-				//tt ss ss ss ss (data)
-				data_type = music_data[vgm_music_offset++]; //data type (I will only play 8 bit unsigned pcm)
-				data_size = music_data[vgm_music_offset+=4]; //data size to read 
-				vgm_music_offset+=data_size;//jump data block (for the moment)
-			break;
-			case 0x90:
-			case 0x91:
-			case 0x92:
-			case 0x93:
-			case 0x94:
-			case 0x95: //nothing yet, (PCM play)
-			break;
-			case 0xAA: //nothing (dual chip)
-			break;
-			default:
-				//Short delay commands, too short to be used in pc xt
-				if (command >= 0x70 && command <= 0x7F){
-					vgm_music_wait = (command & 0x0F) / div;
-				}
-				
-				/*if (vgm_chip == 4){
-				if (vgm_music_wait && (vgm_music_wait < 40)) vgm_music_wait = 0; // skip too short pauses
-				//Other skip commands
-				switch(command & 0xF0){
-					case 0x30:
-						vgm_music_offset+=1;
-					break;
-					case 0x40:
-					case 0x50:
-					case 0xA0:
-					case 0xB0:
-						vgm_music_offset+=2;
-					break;
-					case 0xC0:
-					case 0xD0:
-						vgm_music_offset+=3;
-					break;
-					case 0xE0:
-					case 0xF0:
-						vgm_music_offset+=4;
-					break;
-				}
-				}*/
-			break;
-		}
-		if (vgm_chip !=4){
-			opl2_write(reg, val);
-			//Detect key hits
-			Detect_Key_Hit(reg,val);
-		} else {
-			tandy_write(val);
-			Detect_Key_Hit_Tandy(val);
-		}
-		if (vgm_music_offset > 65535) {vgm_music_offset = 0; vgm_music_array++;}
-		if (vgm_music_array > ram_size) vgm_music_array = 0;
+	//byte *ost = music_sdata + music_offset;
+	while (!vgm_music_wait)
+	{
+		word *wait = (word*) &ADPLUG_music_data[vgm_music_offset+2];
+		reg = ADPLUG_music_data[vgm_music_offset];
+		val = ADPLUG_music_data[vgm_music_offset+1];
+		
+		if (vgm_chip !=4){opl2_write(reg, val);Detect_Key_Hit(reg,val);}
+		else {tandy_write(reg);Detect_Key_Hit_Tandy(reg);}
+		
+        vgm_music_wait = wait[0];
+		vgm_music_offset+=4;
+		if (vgm_music_offset == 65532) vgm_music_offset = 0; 
+		else if (vgm_music_offset == vgm_data_size-4) vgm_music_offset = 0;
 	}
 	vgm_music_wait--;
-	
+
 	asm mov al,020h
 	asm mov dx,020h
 	asm out dx, al	//PIC, EOI
 	asm STI //enable interrupts
-	
 }
+
 
 //DRO Player
 void interrupt CdroPlayer_update(void){
