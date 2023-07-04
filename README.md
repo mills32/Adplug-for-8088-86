@@ -43,7 +43,7 @@ Supported formats:
 - LDS: Loudness Sound System Tracker, the best tracker for adlib - working 100%.
 - VGM: YM3812 and compatible chips recordings (YM3526, Y8950), SN76489 (Tandy, SMS, Game Gear). Find more at vgmrips.com.
 
-  VGM files need 44100Hz playback rate, which can't be achieved on old PC, so timming might be a bit off in many songs
+  Timming might be a bit off in many songs. VGM files bigger than 64KB are truncated to 64KB.
 
 - D00: Edlib Tracker, The most complex tracker created for Adlib.
   
@@ -98,8 +98,7 @@ Formatos soportados:
 - LDS: Loudness Sound System Tracker, el mejor tracker para Adlib - funcionando 100% (Pequeños bugs causados por mi código).
 - VGM: YM3812 y compatibles (YM3526, Y8950), SN76489 (Tandy, SMS, Game Gear). Encuentra VGMs en vgmrips.com.
 
-  Este formato tiene pequeños desajustes en la velocidad de reproducción, ya que los archivos VGM necesitan reproducirse a 44100Hz,
-  cosa que es imposible en estos PC.
+  Pequeños desajustes en la velocidad de reproducción, los archivos mayores de 64KB son cortados a los primeros 64KB.
 
 - D00: Edlib Tracker, el tracker más complejo creado para Adlib.
 
