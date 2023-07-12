@@ -71,6 +71,7 @@ Adplug Reproductor de música OPL2 para 8088-86 y 286
 Pues más de lo mismo, quise compilar adplug para que funcionase en 8086.
 
 En realidad no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
+
 El programa funciona en modo texto 40x25 (CGA, TANDY, EGA, MCGA, VGA). MDA y Hercules no soportan este modo.
 Si tienes una VGA, el programa cargará caracteres de texto modificados.
 
