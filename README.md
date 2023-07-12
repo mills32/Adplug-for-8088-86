@@ -32,7 +32,7 @@ Conbtrols:
 Requirements:
 - CPU 8088 4.77 Mhz
 - RAM 256 Kb
-- GRAPHICS MDA / Hercules / CGA / Tandy / MCGA / EGA / VGA
+- GRAPHICS CGA / Tandy / MCGA / EGA / VGA
 - SOUND Adlib or compatible (Sound Blaster, opl2lpt)
 - SOUND TANDY 3 voices + noise
 
@@ -68,7 +68,7 @@ ESP:
 Adplug Reproductor de música OPL2 para 8088-86 y 286
 --------------------------------------------
 
-Pues mas de lo mismo, quise compilar adplug para que funcionase en 8086.
+Pues más de lo mismo, quise compilar adplug para que funcionase en 8086.
 
 En realidad no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
 El programa funciona en modo texto 40x25 (CGA, TANDY, EGA, MCGA, VGA). MDA y Hercules no soportan este modo.
@@ -96,7 +96,7 @@ Conbtroles:
 Requisitos:
 - CPU 8088 4.77 Mhz
 - RAM 256 Kb
-- GRAFICOS MDA / Hercules / CGA / Tandy / MCGA / EGA / VGA
+- GRAFICOS CGA / Tandy / MCGA / EGA / VGA
 - SONIDO Adlib o compatible (Sound Blaster, opl2lpt)
 - SONIDO TANDY 3 canales + ruido
 
@@ -127,6 +127,6 @@ Formatos soportados:
   
   Edlib Tracker format 1 - no funcionan bien. 
 
-No voy a añadir mas formatos, ya que uedes reproducir cualquier formato convertido a VGM.
+No voy a añadir más formatos, ya que puedes reproducir cualquier formato convertido a VGM.
 
 
