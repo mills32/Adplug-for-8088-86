@@ -55,7 +55,7 @@ int TANDY_PORT = 0x00C0;
 char Initial_working_dir[32];
 	
 extern byte Color_Loading;
-extern byte Color_Loaded;
+extern byte Color_DIR;
 extern byte Color_Error;	
 	
 	//////////
@@ -350,6 +350,11 @@ d00channel d00_channel[9];
 unsigned char *filedata;
 
 //VGM
+char *vgm_format;
+char vgm_format0[] = {"VGM LOG YM3812 "};
+char vgm_format1[] = {"VGM LOG YM3526 "};
+char vgm_format2[] = {"VGM LOG Y8950  "};
+char vgm_format3[] = {"VGM LOG SN76489"};
 word vgm_music_wait = 0;
 word vgm_music_offset = 0;
 byte vgm_music_array = 0;
@@ -365,6 +370,27 @@ byte vgm_truncated = 0;
 extern byte *XGA_TEXT_MAP;	
 char empty_str[] = "                           ";	
 char empty_str1[] = "                             ";
+
+void APrint(word screen, byte color, word size, char *message){
+	asm push ds
+	asm push di
+	asm push si
+	asm lds si,message	//ds:si text
+	asm mov ax,0xB800
+	asm mov es,ax		//es:di MAP
+	asm mov	ah,color		//text color
+	asm mov di,screen
+	asm mov cx,size
+	_loop_print0:	
+	asm 	lodsb
+	asm 	stosw
+	asm 	loop _loop_print0
+	
+	asm pop si
+	asm pop di
+	asm pop ds
+}
+
 void Get_Volume(){
 	int i;
 	for (i = 0; i < 11; i++) {
@@ -388,7 +414,7 @@ void Get_Volume(){
 				Key_Hit[i] = 0; 
 			break;
 		}
-		if (i > 5) if (C_Volume[i] < 36) XGA_TEXT_MAP[(160*7)+90+(i<<2)] = ' ';
+		if (i > 5) if (C_Volume[i] == 16) APrint((80*6)+62,0x0A,5,"     ");
 	}
 }
 
@@ -409,11 +435,11 @@ void Detect_Key_Hit(byte reg,byte val){
 		//Percusion Mode
 		case 0xBD:
 			if (val & 0x1f){ //Mode enabled
-				if (val & 0x10) {Key_Hit[6] = 1;  XGA_TEXT_MAP[(160*7)+114] = 'D';}
-				if (val & 0x08) {Key_Hit[7] = 1;  XGA_TEXT_MAP[(160*7)+118] = 'S';}
-				if (val & 0x04) {Key_Hit[8] = 1;  XGA_TEXT_MAP[(160*7)+122] = 'T';}
-				if (val & 0x02) {Key_Hit[9] = 1;  XGA_TEXT_MAP[(160*7)+126] = 'C';}
-				if (val & 0x01) {Key_Hit[10] = 1; XGA_TEXT_MAP[(160*7)+130] = 'H';}
+				if (val & 0x10) {Key_Hit[6] = 1;  XGA_TEXT_MAP[(80*6)+62] = 'D';}
+				if (val & 0x08) {Key_Hit[7] = 1;  XGA_TEXT_MAP[(80*6)+64] = 'S';}
+				if (val & 0x04) {Key_Hit[8] = 1;  XGA_TEXT_MAP[(80*6)+66] = 'T';}
+				if (val & 0x02) {Key_Hit[9] = 1;  XGA_TEXT_MAP[(80*6)+68] = 'C';}
+				if (val & 0x01) {Key_Hit[10] = 1; XGA_TEXT_MAP[(80*6)+70] = 'H';}
 			}
 		break;
 	}
@@ -428,36 +454,22 @@ void Detect_Key_Hit_Tandy(byte val){
 }
 
 void Print_Loading(){
-	gotoxy(60,25); 
-	textattr(Color_Loading);
-	cprintf("LOADING...");
+	APrint((19*80)+(23*2),0x0A,15,"               ");
+	APrint((20*80)+(23*2),Color_Loading,15,"LOADING...     ");	
 }
 
-void Print_Loaded(char *format, char *name, char *author){
-	textattr(Color_Loaded); //*
-	gotoxy(47,19);
-		cprintf("%s",empty_str);
-	gotoxy(45,20); 
-		cprintf("%s",empty_str1);
-	gotoxy(47,21); 
-		cprintf("%s",empty_str);
-		
-	gotoxy(47,19);
-		cprintf("%s",format);
-	gotoxy(45,20); 
-		cprintf("%s",name);
-	gotoxy(47,21); 
-		cprintf("%s",author);
-	gotoxy(60,25); 
-	textattr(Color_Error);//////
-	if (!vgm_truncated)cprintf("LOADED            ");
-	else cprintf("LOADED (TRUNCATED)");
+void Print_Loaded(char *format, char *name){
+	byte size = strlen(name);
+	if (size >15) size = 15;
+	APrint((20*80)+(23*2),0x0E,15,"               ");
+	APrint((19*80)+(23*2),0x0A,15,format);
+	APrint((20*80)+(23*2),0x0E,size,name);
+	//if (!vgm_truncated)APrint((20*80)+(23*2),0x0E,15,"LOADED         ");
+	//else cprintf("TRUNCATED)");
 }
 
 void Print_ERROR(){
-	gotoxy(60,25); 
-	textattr(Color_Error); //*
-	cprintf("ERROR             ");
+	APrint((20*80)+(23*2),Color_Error,15,"ERROR          ");
 }
 
 //OPL2
@@ -580,7 +592,7 @@ void opl2lpt_write_VGM(unsigned char reg, unsigned char data) {
 }
 
 void Adlib_Detect(){ 
-    int status1, status2, i;
+    byte status1, status2, i;
 
     opl2_write(4, 0x60);
     opl2_write(4, 0x80);
@@ -593,7 +605,7 @@ void Adlib_Detect(){
     for (i=100; i>0; i--) inp(ADLIB_PORT);
 
     status2 = inp(ADLIB_PORT);
-    
+	
     opl2_write(4, 0x60);
     opl2_write(4, 0x80);
 
@@ -799,7 +811,7 @@ void sb_setup(){
 
 void (*MOD_PCM_Drums)(byte);
 
-void MOD_PCM_Drums_OFF(byte chan){chan = 0;};
+void MOD_PCM_Drums_OFF(byte chan){chan = chan +2;};
 
 void MOD_PCM_Drums_ON(byte chan){
 	sb_play_sample(chan,11025);
@@ -897,21 +909,7 @@ void Stop_Music(){
 	Reset_CmodPlayer();
 }
 
-void WaitVsync_MDA(){
-	asm mov		dx,003bah
-	WaitNotVsync:
-	asm in      al,dx
-	asm test    al,08h
-	asm jnz		WaitNotVsync
-	WaitVsync:
-	asm in      al,dx
-	asm test    al,08h
-	asm jz		WaitVsync
-	
-	Non_Interrupt_Player();
-}
-
-void WaitVsync_NOMDA(){
+void WaitVsync(){
 	asm mov		dx,003dah
 	WaitNotVsync:
 	asm in      al,dx
@@ -1051,7 +1049,7 @@ byte CimfPlayer_load(char *filename){
 	else if (!file_extension(filename, "WLF")) rate = 700; //Blake Stone, Operation Body Count, Wolfenstein 3-D, Corridor 7
 	else rate = 700; // default speed for unknown files that aren't .IMF or .WLF
 
-	Print_Loaded("Id's Music Format",filename,"unknown");
+	Print_Loaded("Id Music Format",filename);
 	Music_Add_Interrupt(rate);
 
 	return true;
@@ -1179,15 +1177,15 @@ byte CradPlayer_load(char *filename){
 		opl2_write(0xb0 + i, 0);	// stop old note
 	}
 	if (!MOD_PCM){
-		if (d) Print_Loaded("Reality Adlib Tracker",desc,&desc[30]);
-		else Print_Loaded("Reality Adlib Tracker","                             ","                           ");
+		if (d) Print_Loaded("Adlib Tracker  ",desc);
+		else Print_Loaded("Adlib Tracker  ","               ");
 		
 	} else {//Load samples if RAS (Reality Adlib + Samples)
 		desc[80+16] = 0;
 		desc[160+16] = 0;
 		desc[240+16] = 0;
-		if (d) Print_Loaded("Reality Adlib Tracker PCM",desc,&desc[30]);
-		else Print_Loaded("Reality Adlib Tracker PCM","                             ","                           ");
+		if (d) Print_Loaded("Adlib Tracker+S",desc);
+		else Print_Loaded("Adlib Tracker+S","               ");
 		Clear_Samples();
 		sb_load_sample(&desc[80]);	//Sample channel 0
 		sb_load_sample(&desc[160]);	//Sample channel 1
@@ -1392,7 +1390,7 @@ byte Csa2Player_load(char *filename){
 
 	rate = 50;//bpm;//getrate(filename);
 	Music_Add_Interrupt(rate);
-	Print_Loaded("Surprise! Adlib Tracker 2",filename,"     ");
+	Print_Loaded("Adlib Tracker  ",filename);
 	return true;
 }
 
@@ -1566,7 +1564,7 @@ byte CamdPlayer_load(char *filename){
 	//channel[chan].fx
 	//bpm;//getrate(filename);
 	Music_Add_Interrupt(rate);
-	Print_Loaded("AMUSIC Adlib Tracker",songname,author);
+	Print_Loaded("AMUSIC Adlib   ",songname);
 	return true;
 }
 
@@ -1645,8 +1643,8 @@ byte CldsPlayer_load(char *filename){
 	Music_Add_Interrupt(70);
 	
 	if (!strncmp(filename,"MUSICMAN.LDS",12)){
-		Print_Loaded("LOUDNESS Sound System","The Music Man (Loudness Logo)","Andras Molnar");
-	}else Print_Loaded("LOUDNESS Sound System",filename,"    ");
+		Print_Loaded("LOUDNESS       ","Loudness Logo  ");
+	}else Print_Loaded("LOUDNESS       ",filename);
 	
 	return true;
 }
@@ -1738,14 +1736,12 @@ byte Cd00Player_load(char *filename){
 		
 	d00_rewind(0);
 	if(!ver1) {
-		Print_Loaded("EDlib Tracker 0",header->songname,header->author);
+		Print_Loaded("EDlib Tracker 0",header->songname);
 		Music_Add_Interrupt(header->speed);
 	} else {
-		Print_Loaded("EDlib Tracker 1",filename,"       ");
+		Print_Loaded("EDlib Tracker 1",filename);
 		Music_Add_Interrupt(header1->speed);
-		gotoxy(60,25); 
-		textattr(Color_Error);
-		cprintf("LOADED   (BUGGY)  ");
+		//ERROR("LOADED   (BUGGY)  ");
 	}
 	return true;	
 }
@@ -1763,11 +1759,6 @@ byte CVGMPlayer_load(char *filename){
 	//Read tags
 	char kk;
 	char header[5];
-	char *vgm_format;
-	char vgm_format0[] = {"VGM LOG - CHIP YM3812 "};
-	char vgm_format1[] = {"VGM LOG - CHIP YM3526 "};
-	char vgm_format2[] = {"VGM LOG - CHIP Y8950  "};
-	char vgm_format3[] = {"VGM LOG - CHIP SN76489"};
 	unsigned long tag_offset = 0;
 	unsigned long data_offset = 0;
 	unsigned long opl_clock = 0;
@@ -1826,7 +1817,7 @@ byte CVGMPlayer_load(char *filename){
 	if (tag_offset != 0) size -= (size - tag_offset);
 	if (size > 0xFFFB) {vgm_truncated = 1; vgm_data_size = 0xFFFB;}
 	else vgm_data_size = size;
-
+	
 	//What chip is it? vgm_chip 1 ym3812; 2 ym3526; 3 y8950; 4 SN76489
 	fseek(f, 0x50, SEEK_SET);
 	fread(&opl_clock, 4, 1, f);
@@ -1848,39 +1839,9 @@ byte CVGMPlayer_load(char *filename){
 	fseek(f, data_offset, SEEK_SET);
 	fread(ADPLUG_music_data2,1,vgm_data_size,f);
 	Process_VGM();
-	
-	//read tags
-	/*if (tag_offset){
-		unsigned char i = 0;
-		unsigned char byte = 1;
-		unsigned char title[28] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-		unsigned char author[26] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-		fseek(f, tag_offset+4+4+4, SEEK_SET);
-		//Get strings; (end in \0): track, game, system, author. (duplicated (eng\0jap\0): year converter
-		while (byte != 0){byte = fgetc(f);if (i <27) title[i++] = byte;fgetc(f);} //get track eng
-		title[27] = 0;
-		title[28] = 0;
-		i = 0;byte = 1;
-		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip tittle jap
-		i = 0;byte = 1;
-		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip game
-		i = 0;byte = 1;
-		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip game jap
-		i = 11;byte = 1;
-		while (byte != 0){byte = fgetc(f);if (i <26) vgm_format[i++] = byte;fgetc(f);}//get system eng
-		vgm_format[26] = 0;
-		//i = 0;byte = 1;
-		//while (byte != 0){byte = fgetc(f);fgetc(f);}//skip system jap
-		//i = 0;byte = 1;
-		//while (byte != 0){byte = fgetc(f);if (i <26) author[i++] = byte;fgetc(f);} //get author eng
-		//author[26] = 0;
-		Print_Loaded(vgm_format,title,author);
-	
-	} else Print_Loaded(vgm_format,filename," ");*/
-	
-	Print_Loaded(vgm_format,filename," ");
 	fclose(f);
-	
+	Print_Loaded(vgm_format,filename);
+
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
 	
@@ -1894,7 +1855,7 @@ byte CdroPlayer_load(char *filename){
 	char id[8];
 	unsigned char type = 0;
 	word version;
-	FILE *f = fopen(filename,"rb"); if(!f) return false;
+	FILE *f = fopen(filename,"rb"); //if(!f) return false;
 	pos = 0;
 	size = 0;
 	fread(id,1, 8, f);
@@ -1909,7 +1870,7 @@ byte CdroPlayer_load(char *filename){
 	fread(&size,1,2,f);// Length in pairs
 	fseek(f,6,SEEK_CUR); 
 	fread(&type,1,1,f);	// Type of opl data this can contain (only opl2)
-	//if (type) {Print_ERROR();fclose(f);return false;}
+	if (type) {Print_ERROR();fclose(f);return false;}
 	fseek(f,2,SEEK_CUR);
 	fread(&sdelay,1,1,f);
 	fread(&ldelay,1,1,f);
@@ -1920,52 +1881,12 @@ byte CdroPlayer_load(char *filename){
 	Print_Loading();
 	// Read the OPL data.
 	fread(ADPLUG_music_data,2,size,f);
-	/*
-	title[0] = 0;
-	author[0] = 0;
-	desc[0] = 0;
-	int tagsize = fp.filesize(f) - f->pos();
 
-	if (tagsize >= 3)
-	{
-		// The arbitrary Tag Data section begins here.
-		if ((uint8_t)f->readInt(1) != 0xFF ||
-			(uint8_t)f->readInt(1) != 0xFF ||
-			(uint8_t)f->readInt(1) != 0x1A)
-		{
-			// Tag data does not present or truncated.
-			goto end_section;
-		}
-
-		// "title" is maximum 40 characters long.
-		f->readString(title, 40, 0);
-
-		// Skip "author" if Tag marker byte is missing.
-		if (f->readInt(1) != 0x1B) {
-			f->seek(-1, binio::Add);
-			goto desc_section;
-		}
-
-		// "author" is maximum 40 characters long.
-		f->readString(author, 40, 0);
-
-desc_section:
-		// Skip "desc" if Tag marker byte is missing.
-		if (f->readInt(1) != 0x1C) {
-			goto end_section;
-		}
-
-		// "desc" is now maximum 1023 characters long (it was 140).
-		f->readString(desc, 1023, 0);
-	}
-
-end_section:
-	*/
 	fclose(f);
 	del = 0;
 	rate = 500; // 
 
-	Print_Loaded("Dosbox Raw OPL v 2.0",filename,"unknown");
+	Print_Loaded("Dosbox Raw OPL ",filename);
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
 	
@@ -1993,9 +1914,8 @@ void Load_Music(char *filename){
 	else if (!file_extension(filename,"VGM")) CVGMPlayer_load(filename);
 	else if (!file_extension(filename,"DRO")) CdroPlayer_load(filename);
 	else {
-		gotoxy(59,25);
-		textattr(Color_Error);
-		cprintf(" NOT SUPPORTED  ");
+		APrint((19*80)+(23*2),0x0A,15,"               ");
+		APrint((20*80)+(23*2),Color_Error,15,"NOT SUPPORTED  ");
 	}
 }
 
