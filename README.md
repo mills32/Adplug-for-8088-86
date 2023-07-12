@@ -6,10 +6,11 @@ Adplug OPL2 Music Player for 8088-86 and 286
 Here I go again, the same story, I grew up with an 8086 in which many things would not work 
 back in the day, so I decided to compile "adplug" without any 186 instructions.
 
-This is not really adplug, I only took the file readers and players, and then created a simple gui.
+This is not really adplug, I only took the file readers and players, and then created a simple interface.
 
 This player works on 40x25 text mode (CGA, TANDY, EGA, MCGA, VGA). MDA and Hercules do not support 40x25 text.
 If you have a VGA, the program will load custom graphics for the text mode characters from "Font_BIZ.png".
+
 
 CGA, TANDY, EGA, MCGA:
 
@@ -19,6 +20,7 @@ CGA, TANDY, EGA, MCGA:
 VGA:
 
 ![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/VGA.png)
+
 
 Conbtrols: 
 - Move = UP DOWN LEFT RIGHT arrows
@@ -59,7 +61,7 @@ Supported formats:
   
   Edlib Tracker format 1 - not well supported. 
 
-I want to add: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker by Electronic Rats (HSC), Sierra games (SCI), and Lucasarts (LAA).
+I'm not adding more formats, you can play many unsupported formats using VGM rips.
 
 ESP:
 
@@ -69,9 +71,20 @@ Adplug Reproductor de música OPL2 para 8088-86 y 286
 Pues mas de lo mismo, quise compilar adplug para que funcionase en 8086.
 
 En realidad no es un port de Adplug, sino que he utilizado el código de los reproductores, y he añadido una interfaz.
-Si tienes una VGA, el programa cargará gráficos para sustiruir los caracteres del modo texto desde la imagen "Font_BIZ.png".
+El programa funciona en modo texto 40x25 (CGA, TANDY, EGA, MCGA, VGA). MDA y Hercules no soportan este modo.
+Si tienes una VGA, el programa cargará caracteres de texto modificados.
 
-![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png)
+
+CGA, TANDY, EGA, MCGA:
+
+![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/CGA.png)
+
+
+VGA:
+
+![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/VGA.png)
+
+
 
 Conbtroles: 
 - Mover = Teclas direccionales
@@ -114,6 +127,6 @@ Formatos soportados:
   
   Edlib Tracker format 1 - no funcionan bien. 
 
-Además quiero añadir: Adlib Tracker 2 (A2M OPL2), Twin Tracker (DMO), HSC-Tracker (HSC), Sierra (SCI), Lucasarts (LAA).
+No voy a añadir mas formatos, ya que uedes reproducir cualquier formato convertido a VGM.
 
 
