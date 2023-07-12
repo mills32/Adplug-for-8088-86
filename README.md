@@ -8,9 +8,12 @@ back in the day, so I decided to compile "adplug" without any 186 instructions.
 
 This is not really adplug, I only took the file readers and players, and then created a simple gui.
 
+This player works on40x25 text mode (CGA, TANDY, EGA, VGA). MDA and Hercules do not support 40x25 text.
 If you have a VGA, the program will load custom graphics for the text mode characters from "Font_BIZ.png".
 
-![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/adplay88_003.png)
+![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/CGA.png)
+
+![plot](https://raw.githubusercontent.com/mills32/Adplug-for-8088-86/master/VGA.png)
 
 Conbtrols: 
 - Move = UP DOWN LEFT RIGHT arrows
