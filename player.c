@@ -44,6 +44,7 @@ typedef unsigned long  dword;
 
 byte *XGA=(byte *)0xA0000000L;			/* this points to graphics memory. */
 byte *XGA_TEXT_MAP=(byte *)0xB8000000L;	/* this points to text MAP - MAP attributes */
+byte *MDA_TEXT_MAP=(byte *)0xB0000000L;
 word *PARALEL1=(word *)0x00400008L;		//Paralel port address
 word *PARALEL2=(word *)0x0040000AL;
 word *PARALEL3=(word *)0x0040000CL;
@@ -59,7 +60,8 @@ byte OPL2LPT = 0;
 int Sound_Blaster = 0;
 
 //MISC
-void WaitVsync();
+void WaitVsync_MDA();
+void WaitVsync_NOMDA();
 
 void Clearkb(){
 	asm mov ah,00ch
@@ -117,16 +119,9 @@ void Set_40x25(){
 	asm mov ax,0001h 	//select mode 01 40x25 text
 	asm INT 10h		
 	asm mov dx,03D4h
-	if (GRAPHICS_CARD !=1){
-		asm mov ax,0x8709	//09 = Select Max scan Line register
-		asm out dx,ax		//87 = Scan Doubler, Cell heigh = 8
-	}
+	asm mov ax,0x8709	//09 = Select Max scan Line register
+	asm out dx,ax		//87 = Scan Doubler, Cell heigh = 8
 	
-	if (GRAPHICS_CARD == 2){
-		asm mov dx,03D8h
-		asm mov al,0x08 	//clear bit 5, disable blink, enable screen, 
-		asm out dx,al
-	}
 	if (GRAPHICS_CARD == 3){
 		byte r_reg;
 		int i;
@@ -135,14 +130,14 @@ void Set_40x25(){
 		//outportb(0x03C2, r_reg);
 		//write SEQUENCER regs
 		outport(0x03C4,0x0901);	//Clock rate/2 ; cell = 8 pixels wide
-		//outport(0x03C4,0x0003); //select font bank
-		//outport(0x03C4,0x0004); //Select VRAM size (0 = 64; 2 = 256;)
+		outport(0x03C4,0x0003); //select font bank
+		outport(0x03C4,0x0004); //Select VRAM size (0 = 64; 2 = 256;)
 		//write GRAPHICS CONTROLLER regs
 		//outport(0x03CE,0x1005);	// Shift Reg. -- Shift Register Interleave Mode
-		//outport(0x03CE,0x0E06);	// Select VRAM B8000h-BFFFFh; Chain O/E ON; Text mode ON 
+		outport(0x03CE,0x0E06);	// Select VRAM B8000h-BFFFFh; Chain O/E ON; Text mode ON 
 		//write ATTRIBUTE CONTROLLER regs
 		inportb(0x03DA);//Set flip flop to index mode
-		//outportb(0x03C0,0x20 | 0x13);outportb(0x03C0,0x08);//Set no panning 
+		outportb(0x03C0,0x20 | 0x13);outportb(0x03C0,0x08);//Set no panning 
 		outportb(0x03C0,0x20 | 0x10);outportb(0x03C0,0x24);//2c disable win pan, disable blink 
 
 		//Make cursor a square
@@ -153,16 +148,7 @@ void Set_40x25(){
 
 		asm sti
 	}
-	if (GRAPHICS_CARD == 1){
-		inportb(0x03DA);//Set flip flop to index mode
-		outportb(0x03C0,0x20 | 0x13);outportb(0x03C0,0x08);//Set no panning 
-		outportb(0x03C0,0x20 | 0x10);outportb(0x03C0,0x24);//2c disable win pan, disable blink 
-	}
 } 
-
-void Set_VGA(){
-	
-}
 
 void test();
 
@@ -183,7 +169,8 @@ void main(){
 			Display_Bars();
 			Display_Animations();
 		}
-		WaitVsync();
+		if (GRAPHICS_CARD == 1) WaitVsync_MDA();
+		else WaitVsync_NOMDA();
 	}
 	Exit_Dos();
 }
@@ -197,46 +184,52 @@ void Setup(){
 	union REGS regs;
 	system("cls");
 	//Check graphics
+	//1 MDA, Hercules; 2 CGA,  MCGA, Tandy, EGA; 3 VGA;
 	regs.h.ah=0x1A;
 	regs.h.al=0x00;
 	regs.h.bl=0x32;
 	int86(0x10, &regs, &regs);
+	
 	if (regs.h.al == 0x1A) {
 		APrint((4*80)+(29*2),0x09,23,"SELECT GRAPHICS ADAPTER");
 		APrint((8*80)+(29*2),0x0D, 9,"1 for VGA");
-		APrint((10*80)+(29*2),0x0D,27,"2 for MCGA");
+		APrint((10*80)+(29*2),0x0D,27,"2 for MCGA, EGA, TANDY, CGA");
 		while(!kbhit());
 		key = getch() -48;
 		if (key == 1) GRAPHICS_CARD = 3;
-		else GRAPHICS_CARD = 1;
+		if (key == 2) GRAPHICS_CARD = 2;
 	} else {
 		regs.h.ah=0x12;
 		regs.h.bh=0x10;
 		regs.h.bl=0x10;
 		int86(0x10, &regs, &regs);
-		if (regs.h.bh == 0) GRAPHICS_CARD = 1; //EGA
+		if (regs.h.bh == 0) GRAPHICS_CARD = 2;
 		else {
 			regs.h.ah=0x0F;
 			regs.h.bl=0x00;
 			int86(0x10, &regs, &regs);
-			if (regs.h.al == 0x07) {printf("MDA/Hercules ard not supported, requires CGA/TANDY/EGA/VGA"); sleep(1); exit(1);}
+			if (regs.h.al == 0x07) GRAPHICS_CARD = 1;
 			else GRAPHICS_CARD = 2;
 		}
 	}
-	
 	if (GRAPHICS_CARD == 3){
 		Color_Selected = 0x1F;Color_Not_Selected = 0x05;
 		Color_Loading = 0x74;
 		Color_DIR = 0x0E;Color_Error = 0x74;
 	}
-	if (GRAPHICS_CARD != 3){
+	if (GRAPHICS_CARD == 2){
 		Color_Selected = 0x6E;Color_Not_Selected = 0x02;
 		Color_Loading = 0x4F;
 		Color_DIR = 0x07;Color_Error = 0x4F;
-	}	
+	}
+	if (GRAPHICS_CARD == 1){
+		Color_Selected = 0x78;Color_Not_Selected = 0x10;
+		Color_Loading = 0xF8;
+		Color_DIR = 0x10;Color_Error = 0x10;
+	}
+	Clearkb();	
 	system("cls");
 	
-	Clearkb();
 	Set_40x25();
 	if (GRAPHICS_CARD == 3) Set_Tiles();//Before adding interrupt timer
 	APrint((4*80)+(7*2),0x09,26,"SELECT PORT FOR OPL2 SOUND");
@@ -249,8 +242,8 @@ void Setup(){
 
 	while(!kbhit());
 	key = getch() -48;
-	system("cls");	
 	Clearkb();
+	system("cls");	
 	if (key == 1) {OPL2LPT = 0; ADLIB_PORT = 0x0388;}
 	else if (key == 2) {OPL2LPT = 0; ADLIB_PORT = 0x0220;}
 	else if (key == 3) {OPL2LPT = 0; ADLIB_PORT = 0x0240;}
@@ -263,8 +256,8 @@ void Setup(){
 	key = getch();
 	if ((key == 89) || (key == 121))Sound_Blaster = 1;
 	if ((key == 78) || (key == 110))Sound_Blaster = 0;
-	system("cls");	
 	Clearkb();
+	system("cls");
 	//asm mov ax, 1h
 	//asm int 10h
 }
@@ -381,7 +374,8 @@ void Control_Menu(){
 						Reset_Dir(1);
 					} else {
 						Stop_Music();
-						WaitVsync();
+						if (GRAPHICS_CARD == 1) for (i = 0; i < 16; i++) WaitVsync_MDA();
+						else WaitVsync_NOMDA();
 						Load_Music(dir); //LOAD
 					}
 						
@@ -451,10 +445,30 @@ void Set_Map(){
 		outportb(0x03C8,56);//Text Colors 8-15 are located at VGA 56-63
 		for (i = 8*3; i < 16*3; i++) outportb(0x03C9,VGA_PAL[i]);
 	}
-	if (GRAPHICS_CARD != 3) memcpy(XGA_TEXT_MAP,CGA_MAP,40*25*2);//CGA/TANDY
-	//word cursor_position = (20*40)+37) = 0x0345;
-	outport(0x03D4,0x030E);
-	outport(0x03D4,0x450F);
+	if (GRAPHICS_CARD == 2) {
+		memcpy(XGA_TEXT_MAP,CGA_MAP,40*25*2);//CGA/TANDY
+		asm mov dx,03D8h
+		asm mov al,0x08 	//disable blink, enable screen, disable graphics
+		asm out dx,al
+	}
+	if (GRAPHICS_CARD == 1) {//MDA
+		XGA_TEXT_MAP = MDA_TEXT_MAP;
+		memcpy(XGA_TEXT_MAP,CGA_MAP,40*25*2);
+		for (i = 0;i <(80*25*2);i+=2){
+			character = XGA_TEXT_MAP[i];
+			if ((character == 221) || (character == 222)) character = 219;
+			XGA_TEXT_MAP[i] = character;
+			//MDA Attribute:
+			color = XGA_TEXT_MAP[i+1];
+			bkg = color >> 4;
+			//Bits 0-2: 0 => no underline. //Bit 3 = 1, High intensity.
+			if ( (color == 0x2f) || (character == 219) 
+			|| (character == 220) || (character == 223)
+			|| (bkg == 4)         || (bkg == 5)       ) color = 0x78;//If borders, titles etc
+			else color = 0x10; //Normal
+			XGA_TEXT_MAP[i+1] = color;
+		}
+	}
 }
 
 // @iport - index port, @iport + 1 - data port

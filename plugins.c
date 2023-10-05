@@ -350,11 +350,6 @@ d00channel d00_channel[9];
 unsigned char *filedata;
 
 //VGM
-char *vgm_format;
-char vgm_format0[] = {"VGM LOG YM3812 "};
-char vgm_format1[] = {"VGM LOG YM3526 "};
-char vgm_format2[] = {"VGM LOG Y8950  "};
-char vgm_format3[] = {"VGM LOG SN76489"};
 word vgm_music_wait = 0;
 word vgm_music_offset = 0;
 byte vgm_music_array = 0;
@@ -458,9 +453,10 @@ void Print_Loading(){
 	APrint((20*80)+(23*2),Color_Loading,15,"LOADING...     ");	
 }
 
-void Print_Loaded(char *format, char *name){
+void Print_Loaded(char *format, char *name, char *author){
 	byte size = strlen(name);
 	if (size >15) size = 15;
+	author[2] = 0;
 	APrint((20*80)+(23*2),0x0E,15,"               ");
 	APrint((19*80)+(23*2),0x0A,15,format);
 	APrint((20*80)+(23*2),0x0E,size,name);
@@ -909,7 +905,21 @@ void Stop_Music(){
 	Reset_CmodPlayer();
 }
 
-void WaitVsync(){
+void WaitVsync_MDA(){
+	asm mov		dx,003bah
+	WaitNotVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jnz		WaitNotVsync
+	WaitVsync:
+	asm in      al,dx
+	asm test    al,08h
+	asm jz		WaitVsync
+	
+	Non_Interrupt_Player();
+}
+
+void WaitVsync_NOMDA(){
 	asm mov		dx,003dah
 	WaitNotVsync:
 	asm in      al,dx
@@ -1049,7 +1059,7 @@ byte CimfPlayer_load(char *filename){
 	else if (!file_extension(filename, "WLF")) rate = 700; //Blake Stone, Operation Body Count, Wolfenstein 3-D, Corridor 7
 	else rate = 700; // default speed for unknown files that aren't .IMF or .WLF
 
-	Print_Loaded("Id Music Format",filename);
+	Print_Loaded("Id Music Format",filename,"unknown");
 	Music_Add_Interrupt(rate);
 
 	return true;
@@ -1177,15 +1187,15 @@ byte CradPlayer_load(char *filename){
 		opl2_write(0xb0 + i, 0);	// stop old note
 	}
 	if (!MOD_PCM){
-		if (d) Print_Loaded("Adlib Tracker  ",desc);
-		else Print_Loaded("Adlib Tracker  ","               ");
+		if (d) Print_Loaded("Adlib Tracker  ",desc,&desc[30]);
+		else Print_Loaded("Adlib Tracker  ","                             ","                           ");
 		
 	} else {//Load samples if RAS (Reality Adlib + Samples)
 		desc[80+16] = 0;
 		desc[160+16] = 0;
 		desc[240+16] = 0;
-		if (d) Print_Loaded("Adlib Tracker+S",desc);
-		else Print_Loaded("Adlib Tracker+S","               ");
+		if (d) Print_Loaded("Adlib Tracker+S",desc,&desc[30]);
+		else Print_Loaded("Adlib Tracker+S","                             ","                           ");
 		Clear_Samples();
 		sb_load_sample(&desc[80]);	//Sample channel 0
 		sb_load_sample(&desc[160]);	//Sample channel 1
@@ -1390,7 +1400,7 @@ byte Csa2Player_load(char *filename){
 
 	rate = 50;//bpm;//getrate(filename);
 	Music_Add_Interrupt(rate);
-	Print_Loaded("Adlib Tracker  ",filename);
+	Print_Loaded("Adlib Tracker  ",filename,"     ");
 	return true;
 }
 
@@ -1564,7 +1574,7 @@ byte CamdPlayer_load(char *filename){
 	//channel[chan].fx
 	//bpm;//getrate(filename);
 	Music_Add_Interrupt(rate);
-	Print_Loaded("AMUSIC Adlib   ",songname);
+	Print_Loaded("AMUSIC Adlib   ",songname,author);
 	return true;
 }
 
@@ -1643,8 +1653,8 @@ byte CldsPlayer_load(char *filename){
 	Music_Add_Interrupt(70);
 	
 	if (!strncmp(filename,"MUSICMAN.LDS",12)){
-		Print_Loaded("LOUDNESS       ","Loudness Logo  ");
-	}else Print_Loaded("LOUDNESS       ",filename);
+		Print_Loaded("LOUDNESS       ","Loudness Logo  ","Andras Molnar");
+	}else Print_Loaded("LOUDNESS       ",filename,"    ");
 	
 	return true;
 }
@@ -1736,10 +1746,10 @@ byte Cd00Player_load(char *filename){
 		
 	d00_rewind(0);
 	if(!ver1) {
-		Print_Loaded("EDlib Tracker 0",header->songname);
+		Print_Loaded("EDlib Tracker 0",header->songname,header->author);
 		Music_Add_Interrupt(header->speed);
 	} else {
-		Print_Loaded("EDlib Tracker 1",filename);
+		Print_Loaded("EDlib Tracker 1",filename,"       ");
 		Music_Add_Interrupt(header1->speed);
 		//ERROR("LOADED   (BUGGY)  ");
 	}
@@ -1759,6 +1769,11 @@ byte CVGMPlayer_load(char *filename){
 	//Read tags
 	char kk;
 	char header[5];
+	char *vgm_format;
+	char vgm_format0[] = {"VGM LOG YM3812 "};
+	char vgm_format1[] = {"VGM LOG YM3526 "};
+	char vgm_format2[] = {"VGM LOG Y8950  "};
+	char vgm_format3[] = {"VGM LOG SN76489"};
 	unsigned long tag_offset = 0;
 	unsigned long data_offset = 0;
 	unsigned long opl_clock = 0;
@@ -1817,7 +1832,7 @@ byte CVGMPlayer_load(char *filename){
 	if (tag_offset != 0) size -= (size - tag_offset);
 	if (size > 0xFFFB) {vgm_truncated = 1; vgm_data_size = 0xFFFB;}
 	else vgm_data_size = size;
-	
+
 	//What chip is it? vgm_chip 1 ym3812; 2 ym3526; 3 y8950; 4 SN76489
 	fseek(f, 0x50, SEEK_SET);
 	fread(&opl_clock, 4, 1, f);
@@ -1839,9 +1854,39 @@ byte CVGMPlayer_load(char *filename){
 	fseek(f, data_offset, SEEK_SET);
 	fread(ADPLUG_music_data2,1,vgm_data_size,f);
 	Process_VGM();
+	
+	//read tags
+	/*if (tag_offset){
+		unsigned char i = 0;
+		unsigned char byte = 1;
+		unsigned char title[28] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+		unsigned char author[26] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+		fseek(f, tag_offset+4+4+4, SEEK_SET);
+		//Get strings; (end in \0): track, game, system, author. (duplicated (eng\0jap\0): year converter
+		while (byte != 0){byte = fgetc(f);if (i <27) title[i++] = byte;fgetc(f);} //get track eng
+		title[27] = 0;
+		title[28] = 0;
+		i = 0;byte = 1;
+		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip tittle jap
+		i = 0;byte = 1;
+		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip game
+		i = 0;byte = 1;
+		while (byte != 0){byte = fgetc(f);fgetc(f);}//skip game jap
+		i = 11;byte = 1;
+		while (byte != 0){byte = fgetc(f);if (i <26) vgm_format[i++] = byte;fgetc(f);}//get system eng
+		vgm_format[26] = 0;
+		//i = 0;byte = 1;
+		//while (byte != 0){byte = fgetc(f);fgetc(f);}//skip system jap
+		//i = 0;byte = 1;
+		//while (byte != 0){byte = fgetc(f);if (i <26) author[i++] = byte;fgetc(f);} //get author eng
+		//author[26] = 0;
+		Print_Loaded(vgm_format,title,author);
+	
+	} else Print_Loaded(vgm_format,filename," ");*/
+	
+	Print_Loaded(vgm_format,filename," ");
 	fclose(f);
-	Print_Loaded(vgm_format,filename);
-
+	
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
 	
@@ -1855,7 +1900,7 @@ byte CdroPlayer_load(char *filename){
 	char id[8];
 	unsigned char type = 0;
 	word version;
-	FILE *f = fopen(filename,"rb"); //if(!f) return false;
+	FILE *f = fopen(filename,"rb"); if(!f) return false;
 	pos = 0;
 	size = 0;
 	fread(id,1, 8, f);
@@ -1870,7 +1915,7 @@ byte CdroPlayer_load(char *filename){
 	fread(&size,1,2,f);// Length in pairs
 	fseek(f,6,SEEK_CUR); 
 	fread(&type,1,1,f);	// Type of opl data this can contain (only opl2)
-	if (type) {Print_ERROR();fclose(f);return false;}
+	//if (type) {Print_ERROR();fclose(f);return false;}
 	fseek(f,2,SEEK_CUR);
 	fread(&sdelay,1,1,f);
 	fread(&ldelay,1,1,f);
@@ -1886,7 +1931,7 @@ byte CdroPlayer_load(char *filename){
 	del = 0;
 	rate = 500; // 
 
-	Print_Loaded("Dosbox Raw OPL ",filename);
+	Print_Loaded("Dosbox Raw OPL ",filename,"unknown");
 	if (OPL2LPT == 1) opl2_write = &opl2lpt_write_VGM;
 	if (OPL2LPT == 0) opl2_write = &opl2_write0_VGM;
 	
