@@ -118,20 +118,22 @@ void APrint(word screen, byte color, word size, char *message);
 void Set_40x25(){
 	asm mov ax,0001h 	//select mode 01 40x25 text
 	asm INT 10h		
-	asm mov dx,03D4h
-	asm mov ax,0x8709	//09 = Select Max scan Line register
-	asm out dx,ax		//87 = Scan Doubler, Cell heigh = 8
 	
 	if (GRAPHICS_CARD == 3){
 		byte r_reg;
 		int i;
 		asm cli
+		
+		asm mov dx,03D4h
+		asm mov ax,0x8709	//09 = Select Max scan Line register
+		asm out dx,ax		//87 = Scan Doubler, Cell heigh = 8
+		
 		//r_reg = inportb(0x3CC) & 0xF3; //Disable bits 2 and 3 (25 Mhz mode, 320 width)
 		//outportb(0x03C2, r_reg);
 		//write SEQUENCER regs
 		outport(0x03C4,0x0901);	//Clock rate/2 ; cell = 8 pixels wide
-		outport(0x03C4,0x0003); //select font bank
-		outport(0x03C4,0x0004); //Select VRAM size (0 = 64; 2 = 256;)
+		//outport(0x03C4,0x0003); //select font bank
+		//outport(0x03C4,0x0004); //Select VRAM size (0 = 64; 2 = 256;)
 		//write GRAPHICS CONTROLLER regs
 		//outport(0x03CE,0x1005);	// Shift Reg. -- Shift Register Interleave Mode
 		outport(0x03CE,0x0E06);	// Select VRAM B8000h-BFFFFh; Chain O/E ON; Text mode ON 
